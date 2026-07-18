@@ -6,7 +6,7 @@ RUN mvn -B -q dependency:go-offline
 COPY src ./src
 RUN mvn -B -q clean package
 
-FROM denoland/deno:bin-2.4.5 AS deno
+FROM denoland/deno:bin-2.9.3 AS deno
 
 FROM eclipse-temurin:17-jre-jammy AS runtime
 ARG YT_DLP_VERSION=2026.7.4
