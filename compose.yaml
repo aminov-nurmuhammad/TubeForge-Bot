@@ -1,0 +1,40 @@
+name: tubeforge
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tubeforge
+      POSTGRES_USER: tubeforge
+      POSTGRES_PASSWORD: tubeforge_local_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tubeforge -d tubeforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  bot:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/tubeforge
+      DATABASE_USERNAME: tubeforge
+      DATABASE_PASSWORD: tubeforge_local_password
+      MEDIA_STORAGE_PATH: /app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - media_storage:/app/storage
+
+volumes:
+  postgres_data:
+  media_storage:

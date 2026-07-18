@@ -1,0 +1,13 @@
+target/
+.idea/
+.vscode/
+*.iml
+*.log
+.env
+data/
+storage/
+downloads/
+*.part
+*.ytdl
+.DS_Store
+Thumbs.db
