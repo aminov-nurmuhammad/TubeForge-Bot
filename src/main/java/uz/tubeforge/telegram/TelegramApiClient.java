@@ -64,6 +64,16 @@ public class TelegramApiClient {
         postJson("editMessageText", body, Duration.ofSeconds(30));
     }
 
+    public void editCaption(long chatId, long messageId, String caption, InlineKeyboard keyboard) {
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        body.put("caption", caption);
+        body.put("parse_mode", "HTML");
+        body.put("reply_markup", keyboard == null ? InlineKeyboard.of(List.of()) : keyboard);
+        postJson("editMessageCaption", body, Duration.ofSeconds(30));
+    }
+
     public void answerCallback(String callbackId, String text, boolean alert) {
         var body = new java.util.LinkedHashMap<String, Object>();
         body.put("callback_query_id", callbackId);

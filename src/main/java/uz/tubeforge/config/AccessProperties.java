@@ -16,6 +16,7 @@ public record AccessProperties(
         adminUserIds = adminUserIds == null ? Set.of() : Set.copyOf(adminUserIds);
         allowedUserIds = allowedUserIds == null ? Set.of() : Set.copyOf(allowedUserIds);
         mode = mode == null ? AccessMode.PUBLIC : mode;
+        dailyJobLimit = Math.max(1, dailyJobLimit);
     }
 
     public enum AccessMode {

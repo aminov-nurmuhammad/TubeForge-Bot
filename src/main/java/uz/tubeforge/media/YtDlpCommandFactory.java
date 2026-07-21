@@ -91,7 +91,8 @@ public class YtDlpCommandFactory {
         if ("best".equalsIgnoreCase(quality)) {
             selector = "bv+ba/b";
         } else if ("small".equalsIgnoreCase(quality)) {
-            selector = "wv[ext=mp4]+wa[ext=m4a]/wv+wa/w[ext=mp4]/w";
+            selector = "worstvideo[ext=mp4]+worstaudio[ext=m4a]/worstvideo+worstaudio/"
+                    + "worst[ext=mp4]/worst";
         } else {
             int height = parseHeight(quality);
             selector = "bv[height=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"

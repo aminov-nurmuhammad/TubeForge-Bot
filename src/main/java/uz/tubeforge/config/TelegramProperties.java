@@ -11,6 +11,13 @@ public record TelegramProperties(
         int pollingTimeoutSeconds,
         long maxUploadBytes
 ) {
+    public TelegramProperties {
+        token = token == null ? "" : token.strip();
+        apiBaseUrl = apiBaseUrl == null || apiBaseUrl.isBlank() ? "https://api.telegram.org" : apiBaseUrl.strip();
+        pollingTimeoutSeconds = Math.max(1, Math.min(50, pollingTimeoutSeconds));
+        maxUploadBytes = Math.max(1_000_000, maxUploadBytes);
+    }
+
     public boolean configured() {
         return StringUtils.hasText(token) && !"test-token".equals(token);
     }

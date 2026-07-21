@@ -1,6 +1,8 @@
 package uz.tubeforge.service;
 
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import uz.tubeforge.config.TelegramProperties;
 import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.JobType;
@@ -19,6 +21,8 @@ import java.util.List;
 
 @Service
 public class MediaDeliveryService {
+    private static final Logger log = LoggerFactory.getLogger(MediaDeliveryService.class);
+
     private final TelegramProperties telegramProperties;
     private final TelegramApiClient telegram;
     private final MediaFileTools fileTools;
@@ -81,18 +85,21 @@ public class MediaDeliveryService {
             try {
                 telegram.sendPhoto(chatId, file, caption);
             } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline photo {}: {}", file.getFileName(), e.getMessage());
                 telegram.sendDocument(chatId, file, caption);
             }
         } else if (isVideo(type) && !user.isSendAsDocument()) {
             try {
                 telegram.sendVideo(chatId, file, caption, true);
             } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline video {}: {}", file.getFileName(), e.getMessage());
                 telegram.sendDocument(chatId, file, caption + "\n\n⚠️ Sent as a document because Telegram rejected inline playback.");
             }
         } else if (isAudio(type) && isTelegramAudio(file)) {
             try {
                 telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
             } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline audio {}: {}", file.getFileName(), e.getMessage());
                 telegram.sendDocument(chatId, file, caption);
             }
         } else {

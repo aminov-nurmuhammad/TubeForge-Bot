@@ -164,7 +164,6 @@ flowchart TD
 | `YOUTUBE_COOKIES_FILE` | empty | Optional Netscape cookies file for verification/rate-limit responses |
 | `YT_DLP_CONCURRENT_FRAGMENTS` | `4` | Parallel HLS/DASH fragment downloads |
 | `YT_DLP_RETRIES` | `5` | Extractor and fragment retry count |
-| `ACCESS_MODE` | `PUBLIC` | Switch to `ALLOWLIST` for a private bot |
 | `FEATURE_*` | `true` | Independently enable or disable tools |
 
 Every supported setting is documented in [`.env.example`](.env.example).
@@ -238,7 +237,7 @@ flowchart LR
 
 The Telegram integration is implemented directly against the official HTTP Bot API. External process arguments are passed as arrays through Java `ProcessBuilder`; Telegram users cannot insert shell commands or arbitrary yt-dlp options. YouTube URLs are accepted only from a strict host allowlist.
 
-See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), and [Testing](docs/TESTING.md) for additional details.
+See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), [Troubleshooting](docs/TROUBLESHOOTING.md), [Testing](docs/TESTING.md), and the [Changelog](CHANGELOG.md) for additional details.
 
 ## Known platform constraints
 

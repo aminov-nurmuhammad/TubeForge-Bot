@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
 import uz.tubeforge.config.FeatureProperties;
 import uz.tubeforge.domain.*;
@@ -134,11 +135,11 @@ public class TelegramUpdateRouter {
             return;
         }
         CallbackData data = CallbackData.parse(callback.data());
-        telegram.answerCallback(callback.id(), null, false);
+        safeAnswerCallback(callback.id());
         try {
             routeCallback(callback, user, data);
         } catch (SecurityException e) {
-            telegram.answerCallback(callback.id(), "This action belongs to another user.", true);
+            telegram.sendMessage(callback.message().chat().id(), "🔒 This action belongs to another user.", null);
         } catch (MediaProcessingException e) {
             telegram.sendMessage(callback.message().chat().id(), "❌ <b>Could not start</b>\n\n" + Html.escape(e.getUserMessage()), null);
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -149,46 +150,55 @@ public class TelegramUpdateRouter {
     private void routeCallback(TgCallbackQuery callback, AppUser user, CallbackData data) {
         long chatId = callback.message().chat().id();
         long messageId = callback.message().messageId();
+        boolean captionMessage = callback.message().caption() != null;
         switch (data.action()) {
             case "accept" -> acceptTerms(chatId, messageId, user);
             case "close" -> telegram.deleteMessage(chatId, messageId);
-            case "back", "open" -> showPreview(chatId, messageId, user, data.arg(0));
-            case "video" -> showVideoFormats(chatId, messageId, user, data.arg(0));
+            case "back", "open" -> showPreview(chatId, messageId, captionMessage, user, data.arg(0));
+            case "video" -> showVideoFormats(chatId, messageId, captionMessage, user, data.arg(0));
             case "audio" -> {
                 ownRequest(data.arg(0), user);
-                telegram.editMessage(chatId, messageId,
+                editInteractive(chatId, messageId, captionMessage,
                         "🎵 <b>Choose an audio format</b>\n\nThe complete audio track will be extracted.",
                         keyboards.audioFormats(data.arg(0)));
             }
             case "audfmt" -> {
                 ownRequest(data.arg(0), user);
-                telegram.editMessage(chatId, messageId, "🎚 <b>Choose audio quality</b>\n\nHigher bitrate means a larger file.",
-                        keyboards.audioQualities(data.arg(0), data.arg(1)));
+                String format = data.arg(1).toLowerCase(Locale.ROOT);
+                if (format.equals("wav") || format.equals("flac")) {
+                    jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, format + ":192", null);
+                } else {
+                    editInteractive(chatId, messageId, captionMessage,
+                            "🎚 <b>Choose audio quality</b>\n\nHigher bitrate means a larger file.",
+                            keyboards.audioQualities(data.arg(0), format));
+                }
             }
             case "thumb" -> {
                 ownRequest(data.arg(0), user);
-                telegram.editMessage(chatId, messageId, "🖼 <b>Thumbnail tools</b>\n\nChoose the best image or receive every available thumbnail.",
+                editInteractive(chatId, messageId, captionMessage,
+                        "🖼 <b>Thumbnail tools</b>\n\nChoose the best image or receive every available thumbnail.",
                         keyboards.thumbnailMenu(data.arg(0)));
             }
-            case "subs" -> showSubtitleMenu(chatId, messageId, user, data.arg(0), "dls", "Subtitles");
-            case "trans" -> showSubtitleMenu(chatId, messageId, user, data.arg(0), "dtr", "Transcript language");
+            case "subs" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dls", "Subtitles");
+            case "trans" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dtr", "Transcript language");
             case "clip" -> {
                 ownRequest(data.arg(0), user);
-                telegram.editMessage(chatId, messageId, "✂️ <b>Create a precise clip</b>\n\nChoose the result type, then send a timestamp range.",
+                editInteractive(chatId, messageId, captionMessage,
+                        "✂️ <b>Create a precise clip</b>\n\nChoose the result type, then send a timestamp range.",
                         keyboards.clipMenu(data.arg(0)));
             }
             case "cliptype" -> {
                 ownRequest(data.arg(0), user);
                 sessions.awaitClipRange(user.getTelegramUserId(), data.arg(0), data.arg(1));
-                telegram.editMessage(chatId, messageId,
+                editInteractive(chatId, messageId, captionMessage,
                         "✂️ <b>Send the clip range</b>\n\nExample: <code>01:20-03:45</code>\nMaximum clip length: 30 minutes.",
                         keyboards.back(data.arg(0)));
             }
             case "ai" -> {
                 ownRequest(data.arg(0), user);
-                telegram.editMessage(chatId, messageId, messages.comingSoon(), keyboards.back(data.arg(0)));
+                editInteractive(chatId, messageId, captionMessage, messages.comingSoon(), keyboards.back(data.arg(0)));
             }
-            case "info" -> showInfo(chatId, messageId, user, data.arg(0));
+            case "info" -> showInfo(chatId, messageId, captionMessage, user, data.arg(0));
             case "dlv" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.VIDEO, data.arg(1), null);
             case "dla" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, data.arg(1) + ":" + data.arg(2), null);
             case "dlt" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.THUMBNAIL, "jpg", null);
@@ -202,15 +212,15 @@ public class TelegramUpdateRouter {
             case "paudio" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.PLAYLIST_AUDIO,
                     user.getDefaultAudioFormat().toLowerCase(Locale.ROOT) + ":192", null);
             case "cancel" -> jobs.cancel(user.getTelegramUserId(), data.arg(0));
-            case "settings" -> refreshSettings(chatId, messageId, user.getTelegramUserId());
-            case "setlang" -> telegram.editMessage(chatId, messageId, "🌐 <b>Choose interface language</b>", keyboards.languageMenu());
-            case "lang" -> { users.changeLanguage(user.getTelegramUserId(), Language.valueOf(data.arg(0))); refreshSettings(chatId, messageId, user.getTelegramUserId()); }
-            case "setvq" -> telegram.editMessage(chatId, messageId, "🎥 <b>Default video quality</b>", keyboards.videoQualitySettings());
-            case "vq" -> { users.changeVideoQuality(user.getTelegramUserId(), data.arg(0)); refreshSettings(chatId, messageId, user.getTelegramUserId()); }
-            case "setaf" -> telegram.editMessage(chatId, messageId, "🎵 <b>Default audio format</b>", keyboards.audioFormatSettings());
-            case "af" -> { users.changeAudioFormat(user.getTelegramUserId(), data.arg(0)); refreshSettings(chatId, messageId, user.getTelegramUserId()); }
-            case "toggledoc" -> { users.toggleDocument(user.getTelegramUserId()); refreshSettings(chatId, messageId, user.getTelegramUserId()); }
-            case "togglecmp" -> { users.toggleCompression(user.getTelegramUserId()); refreshSettings(chatId, messageId, user.getTelegramUserId()); }
+            case "settings" -> refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId());
+            case "setlang" -> editInteractive(chatId, messageId, captionMessage, "🌐 <b>Choose interface language</b>", keyboards.languageMenu());
+            case "lang" -> { users.changeLanguage(user.getTelegramUserId(), Language.valueOf(data.arg(0))); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
+            case "setvq" -> editInteractive(chatId, messageId, captionMessage, "🎥 <b>Default video quality</b>", keyboards.videoQualitySettings());
+            case "vq" -> { users.changeVideoQuality(user.getTelegramUserId(), data.arg(0)); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
+            case "setaf" -> editInteractive(chatId, messageId, captionMessage, "🎵 <b>Default audio format</b>", keyboards.audioFormatSettings());
+            case "af" -> { users.changeAudioFormat(user.getTelegramUserId(), data.arg(0)); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
+            case "toggledoc" -> { users.toggleDocument(user.getTelegramUserId()); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
+            case "togglecmp" -> { users.toggleCompression(user.getTelegramUserId()); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
             default -> telegram.sendMessage(chatId, "This button is no longer available. Send the link again.", null);
         }
     }
@@ -225,21 +235,27 @@ public class TelegramUpdateRouter {
         MediaRequest request = requests.create(user.getTelegramUserId(), chatId, url);
         TgMessage progress = telegram.sendMessage(chatId, messages.inspecting(), null);
         requests.attachPreviewMessage(request.getId(), progress.messageId());
-        executor.execute(() -> {
-            try {
-                MediaInfo info = inspection.inspect(url);
-                requests.markReady(request.getId(), info);
-                sendInspectionPreview(chatId, progress.messageId(), request.getId(), info);
-            } catch (MediaProcessingException e) {
-                requests.markFailed(request.getId());
-                telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\n"
-                        + Html.escape(e.getUserMessage()) + "\n\n<code>" + e.getCode() + "</code>", null);
-            } catch (Exception e) {
-                requests.markFailed(request.getId());
-                log.error("Link inspection failed", e);
-                telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\nAn unexpected server error occurred.", null);
-            }
-        });
+        try {
+            executor.execute(() -> {
+                try {
+                    MediaInfo info = inspection.inspect(url);
+                    requests.markReady(request.getId(), info);
+                    sendInspectionPreview(chatId, progress.messageId(), request.getId(), info);
+                } catch (MediaProcessingException e) {
+                    requests.markFailed(request.getId());
+                    telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\n"
+                            + Html.escape(e.getUserMessage()) + "\n\n<code>" + e.getCode() + "</code>", null);
+                } catch (Exception e) {
+                    requests.markFailed(request.getId());
+                    log.error("Link inspection failed", e);
+                    telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\nAn unexpected server error occurred.", null);
+                }
+            });
+        } catch (TaskRejectedException e) {
+            requests.markFailed(request.getId());
+            telegram.editMessage(chatId, progress.messageId(),
+                    "⚠️ <b>Server is busy</b>\n\nToo many links are being inspected. Please try again shortly.", null);
+        }
     }
 
     private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info) {
@@ -307,35 +323,39 @@ public class TelegramUpdateRouter {
         }
     }
 
-    private void showPreview(long chatId, long messageId, AppUser user, String requestId) {
+    private void showPreview(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
         MediaInfo info = requests.info(request);
-        telegram.editMessage(chatId, messageId, messages.preview(info), keyboards.preview(requestId, info));
+        editInteractive(chatId, messageId, captionMessage, messages.preview(info), keyboards.preview(requestId, info));
     }
 
-    private void showVideoFormats(long chatId, long messageId, AppUser user, String requestId) {
+    private void showVideoFormats(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
         MediaInfo info = requests.info(request);
-        telegram.editMessage(chatId, messageId, "🎥 <b>Choose video quality</b>\n\nSizes are estimates and may change when video and audio are merged.",
+        editInteractive(chatId, messageId, captionMessage,
+                "🎥 <b>Choose video quality</b>\n\nSizes are estimates and may change when video and audio are merged.",
                 keyboards.videoFormats(requestId, info));
     }
 
-    private void showSubtitleMenu(long chatId, long messageId, AppUser user, String requestId,
+    private void showSubtitleMenu(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId,
                                   String action, String title) {
         MediaInfo info = requests.info(ownRequest(requestId, user));
         if (info.subtitles().isEmpty()) {
-            telegram.editMessage(chatId, messageId, "📝 <b>No subtitles found</b>\n\nThis video does not expose official or automatic captions.",
+            editInteractive(chatId, messageId, captionMessage,
+                    "📝 <b>No subtitles found</b>\n\nThis video does not expose official or automatic captions.",
                     keyboards.back(requestId));
             return;
         }
-        telegram.editMessage(chatId, messageId, "📝 <b>" + title + "</b>\n\n🤖 marks automatically generated captions.",
+        editInteractive(chatId, messageId, captionMessage,
+                "📝 <b>" + title + "</b>\n\n🤖 marks automatically generated captions.",
                 keyboards.subtitleMenu(requestId, info.subtitles(), action));
     }
 
-    private void showInfo(long chatId, long messageId, AppUser user, String requestId) {
+    private void showInfo(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaInfo info = requests.info(ownRequest(requestId, user));
         String description = info.description() == null ? "" : info.description().strip();
-        if (description.length() > 1200) description = description.substring(0, 1200) + "…";
+        int descriptionLimit = captionMessage ? 450 : 1200;
+        if (description.length() > descriptionLimit) description = description.substring(0, descriptionLimit) + "…";
         String text = "ℹ️ <b>Media information</b>\n\n"
                 + "🎬 <b>Title:</b> " + Html.escape(info.title()) + "\n"
                 + "📺 <b>Channel:</b> " + Html.escape(info.channel()) + "\n"
@@ -345,7 +365,7 @@ public class TelegramUpdateRouter {
                 + "🎞 <b>Video qualities:</b> " + info.videoFormats().size() + "\n"
                 + "📝 <b>Subtitle languages:</b> " + info.subtitles().size()
                 + (description.isBlank() ? "" : "\n\n<b>Description</b>\n" + Html.escape(description));
-        telegram.editMessage(chatId, messageId, text, keyboards.back(requestId));
+        editInteractive(chatId, messageId, captionMessage, text, keyboards.back(requestId));
     }
 
     private MediaRequest ownRequest(String id, AppUser user) {
@@ -365,9 +385,9 @@ public class TelegramUpdateRouter {
         return code;
     }
 
-    private void refreshSettings(long chatId, long messageId, long userId) {
+    private void refreshSettings(long chatId, long messageId, boolean captionMessage, long userId) {
         AppUser fresh = users.require(userId);
-        telegram.editMessage(chatId, messageId, messages.settings(fresh), keyboards.settings(fresh));
+        editInteractive(chatId, messageId, captionMessage, messages.settings(fresh), keyboards.settings(fresh));
     }
 
     private void showHistory(long chatId, AppUser user) {
@@ -427,4 +447,21 @@ public class TelegramUpdateRouter {
     }
 
     private String on(boolean value) { return value ? "✅" : "❌"; }
+
+    private void editInteractive(long chatId, long messageId, boolean captionMessage, String text,
+                                 InlineKeyboard keyboard) {
+        if (captionMessage) {
+            telegram.editCaption(chatId, messageId, text, keyboard);
+        } else {
+            telegram.editMessage(chatId, messageId, text, keyboard);
+        }
+    }
+
+    private void safeAnswerCallback(String callbackId) {
+        try {
+            telegram.answerCallback(callbackId, null, false);
+        } catch (TelegramApiException e) {
+            log.debug("Could not acknowledge callback {}: {}", callbackId, e.getMessage());
+        }
+    }
 }

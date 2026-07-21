@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Service;
@@ -110,7 +111,14 @@ public class MediaJobService {
         }
         job.setProgressMessageId(progress.messageId());
         jobs.save(job);
-        executor.execute(() -> execute(job.getId()));
+        try {
+            executor.execute(() -> execute(job.getId()));
+        } catch (TaskRejectedException e) {
+            job.fail("QUEUE_FULL", "The processing queue is full", clock.instant());
+            jobs.save(job);
+            safeEdit(job, "⚠️ <b>Server is busy</b>\n\nThe processing queue is full. Please try again shortly.", null);
+            throw new MediaProcessingException("QUEUE_FULL", "The processing queue is full. Please try again shortly.", e);
+        }
         return job;
     }
 
@@ -143,7 +151,12 @@ public class MediaJobService {
         for (DownloadJob job : unfinished) {
             job.requeue();
             jobs.save(job);
-            executor.execute(() -> execute(job.getId()));
+            try {
+                executor.execute(() -> execute(job.getId()));
+            } catch (TaskRejectedException e) {
+                log.warn("Recovery queue is full; job {} remains queued", job.getId());
+                break;
+            }
         }
     }
 

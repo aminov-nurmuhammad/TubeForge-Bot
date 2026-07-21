@@ -63,6 +63,9 @@ public class KeyboardFactory {
         } else {
             rows.add(List.of(callback("ℹ️ More info", of("info", requestId))));
         }
+        if (info.webpageUrl() != null && info.webpageUrl().startsWith("https://")) {
+            rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl())));
+        }
         rows.add(List.of(callback("❌ Close", of("close"))));
         return InlineKeyboard.of(rows);
     }
@@ -89,8 +92,8 @@ public class KeyboardFactory {
     public InlineKeyboard audioFormats(String requestId) {
         return InlineKeyboard.of(List.of(
                 List.of(callback("🎧 MP3", of("audfmt", requestId, "mp3")), callback("🎼 M4A", of("audfmt", requestId, "m4a"))),
-                List.of(callback("🔊 WAV", of("audfmt", requestId, "wav")), callback("🎙 OGG", of("audfmt", requestId, "ogg"))),
-                List.of(callback("💿 FLAC", of("audfmt", requestId, "flac"))),
+                List.of(callback("🔊 WAV • lossless", of("audfmt", requestId, "wav")), callback("🎙 OGG", of("audfmt", requestId, "ogg"))),
+                List.of(callback("💿 FLAC • lossless", of("audfmt", requestId, "flac"))),
                 List.of(callback("🔙 Back", of("back", requestId)))
         ));
     }

@@ -46,7 +46,8 @@ $commandNames = @{
 
 foreach ($entry in $defaultTools.GetEnumerator()) {
     $current = [Environment]::GetEnvironmentVariable($entry.Key, "Process")
-    if (-not $current -and (Test-Path $entry.Value)) {
+    $currentExists = $current -and ((Test-Path $current) -or (Get-Command $current -ErrorAction SilentlyContinue))
+    if (-not $currentExists -and (Test-Path $entry.Value)) {
         Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value
     } elseif (-not $current) {
         Set-Item -Path "Env:$($entry.Key)" -Value $commandNames[$entry.Key]
