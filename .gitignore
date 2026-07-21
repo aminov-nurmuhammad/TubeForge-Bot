@@ -4,6 +4,9 @@ target/
 *.iml
 *.log
 .env
+*.cookies.txt
+youtube-cookies.txt
+secrets/
 data/
 storage/
 downloads/

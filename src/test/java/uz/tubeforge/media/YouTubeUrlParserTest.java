@@ -26,9 +26,19 @@ class YouTubeUrlParserTest {
 
     @Test
     void acceptsShortHostButRejectsLookalikesAndCredentials() {
-        assertThat(parser.parse("https://youtu.be/dQw4w9WgXcQ")).isPresent();
+        var shortUrl = parser.parse("https://youtu.be/dQw4w9WgXcQ?si=tracking&t=42").orElseThrow();
+        assertThat(shortUrl.normalizedUrl()).isEqualTo("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42");
         assertThat(parser.parse("https://youtube.com.evil.example/watch?v=x")).isEmpty();
         assertThat(parser.parse("https://user:pass@youtube.com/watch?v=x")).isEmpty();
         assertThat(parser.parse("file:///etc/passwd")).isEmpty();
+    }
+
+    @Test
+    void recognizesLinksWithoutSchemeAndCanonicalizesEmbedLinks() {
+        assertThat(parser.find("open youtu.be/dQw4w9WgXcQ now")).isPresent();
+        assertThat(parser.parse("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ").orElseThrow().normalizedUrl())
+                .isEqualTo("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        assertThat(parser.parse("https://youtube.com/watch?v=abc&list=PL123").orElseThrow().sourceType())
+                .isEqualTo(SourceType.VIDEO);
     }
 }

@@ -70,6 +70,9 @@ Restart after changes. `/id` reveals the numeric ID needed for configuration.
 | Bot does not reply | Check the token and `docker compose logs -f bot` |
 | `409 Conflict` while polling | Stop the other instance using the same bot token or remove its webhook |
 | Link inspection suddenly fails | Rebuild with a current stable yt-dlp |
+| `YOUTUBE_AUTH_REQUIRED` | Export authorized cookies to a private Netscape `cookies.txt` and set `YOUTUBE_COOKIES_FILE` |
+| `YOUTUBE_RATE_LIMITED` | Wait before retrying; avoid high concurrency; optionally configure authorized cookies |
+| Video arrives without sound | Update to the current build; it verifies and normalizes video/audio streams before upload |
 | Health reports FFmpeg/yt-dlp down | Rebuild the Docker image or install missing tools locally |
 | Upload rejected | Lower quality, enable auto-compress, or reduce `TELEGRAM_MAX_UPLOAD_BYTES` |
 | Disk usage grows | Reduce `MEDIA_CACHE_RETENTION` and playlist limits |

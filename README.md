@@ -9,7 +9,7 @@ The application uses only free, open-source components. It does not require an A
 ## Features
 
 - Automatic recognition of normal YouTube URLs, `youtu.be`, Shorts, timestamped links and public playlists
-- Rich preview with title, channel, duration, views, type, available qualities and subtitle languages
+- Rich image preview with automatic text fallback, title, channel, duration, views and media type
 - Inline keyboards throughout the complete flow
 - Video quality selection from the formats actually reported by YouTube, plus best and smallest options
 - Full audio extraction to MP3, M4A, WAV, OGG or FLAC, with quality selection and metadata
@@ -21,6 +21,10 @@ The application uses only free, open-source components. It does not require an A
 - Persistent link history, job history and user preferences
 - English, Russian and Uzbek interface selection
 - Live progress bars, speed/ETA display and cancellable background jobs
+- Separate inspection and download pools, metadata reuse and duplicate-job protection
+- Verified video+audio streams, Telegram-compatible H.264/AAC output and fast-start remuxing
+- Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
+- Actionable diagnostics for YouTube rate limits, verification prompts, FFmpeg and JavaScript runtime failures
 - Daily user quotas, owner/admin IDs, public or allowlist access
 - Terms acceptance and privacy information
 - Automatic compression and multi-part delivery for files above the configured Telegram limit
@@ -81,6 +85,36 @@ export TELEGRAM_BOT_TOKEN="your-token"
 
 The direct run uses a persistent H2 database under `./data` and temporary media under `./storage`.
 
+### Windows one-command start
+
+The included PowerShell launcher automatically detects the tool layout used in this project:
+
+```text
+C:\TubeForgeTools\yt-dlp.exe
+C:\TubeForgeTools\ffmpeg\bin\ffmpeg.exe
+C:\TubeForgeTools\ffmpeg\bin\ffprobe.exe
+```
+
+Run from the project directory:
+
+```powershell
+Copy-Item .env.example .env
+# Put the BotFather token into .env, then:
+powershell -ExecutionPolicy Bypass -File .\scripts\run-windows.ps1
+```
+
+The launcher validates Java, yt-dlp, FFmpeg and FFprobe before Spring Boot starts. `application.yml` automatically imports `.env`, so IntelliJ and the launcher use the same configuration. Docker users can run the same script with `-Docker`.
+
+### Optional PostgreSQL
+
+No database setup is required for a personal local bot: H2 is the default. To use the existing PostgreSQL database named `youtube`, add these values to `.env`:
+
+```dotenv
+DATABASE_URL=jdbc:postgresql://localhost:5432/youtube
+DATABASE_USERNAME=postgres
+DATABASE_PASSWORD=your_local_password
+```
+
 ## User flow
 
 ```mermaid
@@ -122,11 +156,14 @@ flowchart TD
 | `ALLOWED_USER_IDS` | empty | IDs permitted in allowlist mode |
 | `DAILY_JOB_LIMIT` | `20` | Jobs per non-admin user in 24 hours |
 | `MAX_CONCURRENT_JOBS` | `2` | Media processes running simultaneously |
+| `MAX_CONCURRENT_INSPECTIONS` | `4` | Links that can be inspected simultaneously |
 | `MAX_VIDEO_DURATION_SECONDS` | `10800` | Maximum non-playlist duration |
 | `MAX_PLAYLIST_ITEMS` | `20` | Maximum public-playlist items |
 | `TELEGRAM_MAX_UPLOAD_BYTES` | `50000000` | Upload target for the standard Bot API |
 | `MEDIA_CACHE_RETENTION` | `PT24H` | Local result retention before cleanup |
-| `ACCESS_MODE` | `PUBLIC` | Switch to `ALLOWLIST` for a private bot |
+| `YOUTUBE_COOKIES_FILE` | empty | Optional Netscape cookies file for verification/rate-limit responses |
+| `YT_DLP_CONCURRENT_FRAGMENTS` | `4` | Parallel HLS/DASH fragment downloads |
+| `YT_DLP_RETRIES` | `5` | Extractor and fragment retry count |
 | `FEATURE_*` | `true` | Independently enable or disable tools |
 
 Every supported setting is documented in [`.env.example`](.env.example).
@@ -154,6 +191,14 @@ The standard hosted Telegram Bot API has a much smaller upload limit than a loca
 
 Users can turn automatic compression off in `/settings`. The upload target is configurable for deployments using Telegram's local Bot API server.
 
+Before an inline video is uploaded, TubeForge verifies that both video and audio streams exist. It then performs a fast stream-copy when the codecs are already compatible, or transcodes only what Telegram clients cannot play reliably. Silent video-only output is never delivered as a successful result.
+
+## YouTube verification and rate limits
+
+Public links normally need no account. YouTube can nevertheless rate-limit a network address or request verification. TubeForge reports this as `YOUTUBE_RATE_LIMITED` or `YOUTUBE_AUTH_REQUIRED` instead of a generic failure.
+
+If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE` to a local Netscape-format `cookies.txt`. The file is ignored by Git and must never be committed or shared. Browser-database decryption is deliberately not performed by the bot; this avoids Windows DPAPI/profile-lock failures and keeps authentication explicit.
+
 ## Health and operations
 
 - Application status: `http://localhost:8080/`
@@ -172,7 +217,7 @@ Users can turn automatic compression off in `/settings`. The upload target is co
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-1.0.0.jar
+target/tubeforge-bot-2.0.0.jar
 ```
 
 ## Architecture
@@ -181,8 +226,10 @@ target/tubeforge-bot-1.0.0.jar
 flowchart LR
     TG["Telegram Bot API"] --> APP["Spring Boot"]
     APP --> DB["H2 / PostgreSQL"]
-    APP --> Q["Bounded job executor"]
-    Q --> YT["yt-dlp"]
+    APP --> IQ["Fast inspection pool"]
+    APP --> Q["Bounded media queue"]
+    IQ --> YTM["yt-dlp metadata"]
+    Q --> YTD["yt-dlp downloads"]
     Q --> FF["FFmpeg / FFprobe"]
     Q --> FS["Temporary storage"]
     FS --> TG
@@ -190,11 +237,12 @@ flowchart LR
 
 The Telegram integration is implemented directly against the official HTTP Bot API. External process arguments are passed as arrays through Java `ProcessBuilder`; Telegram users cannot insert shell commands or arbitrary yt-dlp options. YouTube URLs are accepted only from a strict host allowlist.
 
-See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), and [Testing](docs/TESTING.md) for additional details.
+See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), [Troubleshooting](docs/TROUBLESHOOTING.md), [Testing](docs/TESTING.md), and the [Changelog](CHANGELOG.md) for additional details.
 
 ## Known platform constraints
 
 - YouTube changes frequently. Keep yt-dlp current when extraction starts failing.
+- No application can guarantee access when YouTube rate-limits the host or requires account verification; use the optional cookies-file setting only for content you are authorized to process.
 - Private, paid, members-only, DRM-protected and access-controlled media is intentionally unsupported.
 - Region-restricted or age-verification media may be unavailable from the deployment server.
 - Playlist downloads can consume significant disk, CPU and upload bandwidth; limits are intentionally conservative.

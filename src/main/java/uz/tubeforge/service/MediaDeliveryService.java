@@ -1,6 +1,8 @@
 package uz.tubeforge.service;
 
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import uz.tubeforge.config.TelegramProperties;
 import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.JobType;
@@ -8,6 +10,7 @@ import uz.tubeforge.media.MediaFileTools;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.MediaProcessingException;
 import uz.tubeforge.telegram.TelegramApiClient;
+import uz.tubeforge.telegram.TelegramApiException;
 import uz.tubeforge.util.Html;
 
 import java.io.IOException;
@@ -18,6 +21,8 @@ import java.util.List;
 
 @Service
 public class MediaDeliveryService {
+    private static final Logger log = LoggerFactory.getLogger(MediaDeliveryService.class);
+
     private final TelegramProperties telegramProperties;
     private final TelegramApiClient telegram;
     private final MediaFileTools fileTools;
@@ -34,6 +39,10 @@ public class MediaDeliveryService {
         Path prepared = original;
         boolean mediaVideo = isVideo(type);
         boolean mediaAudio = isAudio(type);
+
+        if (mediaVideo && !user.isSendAsDocument()) {
+            prepared = fileTools.prepareTelegramVideo(prepared);
+        }
 
         if (size(prepared) > limit && user.isAutoCompress() && mediaVideo) {
             prepared = fileTools.compressVideo(prepared, (long) (limit * 0.92));
@@ -73,11 +82,26 @@ public class MediaDeliveryService {
         String caption = "✅ <b>TubeForge</b>\n" + Html.escape(info.title())
                 + (part == null ? "" : "\n" + part);
         if (type == JobType.THUMBNAIL) {
-            telegram.sendPhoto(chatId, file, caption);
+            try {
+                telegram.sendPhoto(chatId, file, caption);
+            } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline photo {}: {}", file.getFileName(), e.getMessage());
+                telegram.sendDocument(chatId, file, caption);
+            }
         } else if (isVideo(type) && !user.isSendAsDocument()) {
-            telegram.sendVideo(chatId, file, caption, true);
-        } else if (isAudio(type)) {
-            telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
+            try {
+                telegram.sendVideo(chatId, file, caption, true);
+            } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline video {}: {}", file.getFileName(), e.getMessage());
+                telegram.sendDocument(chatId, file, caption + "\n\n⚠️ Sent as a document because Telegram rejected inline playback.");
+            }
+        } else if (isAudio(type) && isTelegramAudio(file)) {
+            try {
+                telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
+            } catch (TelegramApiException e) {
+                log.debug("Telegram rejected inline audio {}: {}", file.getFileName(), e.getMessage());
+                telegram.sendDocument(chatId, file, caption);
+            }
         } else {
             telegram.sendDocument(chatId, file, caption);
         }
@@ -93,6 +117,11 @@ public class MediaDeliveryService {
 
     private long size(Path path) {
         try { return Files.size(path); } catch (IOException e) { return 0; }
+    }
+
+    private boolean isTelegramAudio(Path path) {
+        String name = path.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        return name.endsWith(".mp3") || name.endsWith(".m4a");
     }
 
     public record DeliveryResult(List<Path> files, long totalBytes) {}

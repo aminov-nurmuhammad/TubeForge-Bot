@@ -25,9 +25,15 @@ public class MediaToolsHealthIndicator implements HealthIndicator {
     public Health health() {
         ProcessResult ytDlp = check(properties.ytDlpPath(), "--version");
         ProcessResult ffmpeg = check(properties.ffmpegPath(), "-version");
-        Health.Builder health = ytDlp.successful() && ffmpeg.successful() ? Health.up() : Health.down();
+        ProcessResult ffprobe = check(properties.ffprobePath(), "-version");
+        boolean cookiesReady = !properties.hasCookiesFile()
+                || java.nio.file.Files.isRegularFile(properties.cookiesFile());
+        Health.Builder health = ytDlp.successful() && ffmpeg.successful() && ffprobe.successful() && cookiesReady
+                ? Health.up() : Health.down();
         return health.withDetail("ytDlp", summary(ytDlp))
                 .withDetail("ffmpeg", summary(ffmpeg))
+                .withDetail("ffprobe", summary(ffprobe))
+                .withDetail("cookies", properties.hasCookiesFile() ? (cookiesReady ? "configured" : "file missing") : "not configured")
                 .withDetail("storage", properties.storagePath().toAbsolutePath().normalize().toString())
                 .build();
     }

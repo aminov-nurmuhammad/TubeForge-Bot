@@ -2,7 +2,7 @@
 
 ## Secrets
 
-Never commit `.env`, Telegram bot tokens, database passwords, cookies, browser profiles, or user media. TubeForge intentionally does not support cookies or commands supplied by Telegram users.
+Never commit `.env`, Telegram bot tokens, database passwords, cookies, browser profiles, or user media. TubeForge never accepts cookies or commands supplied by Telegram users. Operators may configure a private Netscape cookies file locally through `YOUTUBE_COOKIES_FILE`; it remains outside the repository.
 
 If a token is exposed, revoke it immediately through `@BotFather`, create a new token, update the deployment, and remove the exposed value from Git history.
 

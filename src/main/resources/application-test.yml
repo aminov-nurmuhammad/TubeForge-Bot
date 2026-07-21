@@ -1,82 +1,49 @@
 spring:
-  application:
-    name: tubeforge-bot
-
   datasource:
-    url: jdbc:postgresql://localhost:5432/youtube
-    username: postgres
-    password: "1122qaqa"
-
+    url: jdbc:h2:mem:tubeforge-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
-
   flyway:
     enabled: true
 
-  codec:
-    max-in-memory-size: 8MB
-
-  task:
-    scheduling:
-      pool:
-        size: 3
-
 server:
-  port: 8080
-  shutdown: graceful
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: when_authorized
-  info:
-    env:
-      enabled: true
-
-info:
-  app:
-    name: TubeForge Bot
-    version: 1.0.0
-    description: Self-hosted Telegram media toolkit
+  port: 0
 
 tubeforge:
   telegram:
-    token: "8879214208:AAGeFsbY899-fXaW9Enj0ioxp5w_qCcHJ6A"
+    token: test-token
     api-base-url: https://api.telegram.org
-    polling-enabled: true
-    polling-timeout-seconds: 25
+    polling-enabled: false
+    polling-timeout-seconds: 1
     max-upload-bytes: 50000000
-
   media:
     yt-dlp-path: yt-dlp
     ffmpeg-path: ffmpeg
     ffprobe-path: ffprobe
-    storage-path: ./storage
-    process-timeout: PT2H
-    metadata-timeout: PT90S
+    cookies-file:
+    proxy-url:
+    storage-path: ./target/test-storage
+    process-timeout: PT1M
+    metadata-timeout: PT10S
+    socket-timeout: PT5S
     max-video-duration-seconds: 10800
-    max-playlist-items: 20
+    max-playlist-items: 5
     max-concurrent-jobs: 1
-    cache-retention: PT24H
-    progress-update-interval: PT3S
-
+    max-concurrent-inspections: 1
+    concurrent-fragments: 1
+    extractor-retries: 1
+    cache-retention: PT1H
+    progress-update-interval: PT1S
   access:
     mode: PUBLIC
     admin-user-ids:
     allowed-user-ids:
     daily-job-limit: 20
-    require-terms-acceptance: true
-
+    require-terms-acceptance: false
   features:
     video-download: true
     audio-download: true
@@ -86,11 +53,3 @@ tubeforge:
     clips: true
     playlists: true
     ai-coming-soon: true
-
-logging:
-  level:
-    root: INFO
-    uz.tubeforge: INFO
-    org.hibernate.SQL: WARN
-  pattern:
-    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} - %msg%n"

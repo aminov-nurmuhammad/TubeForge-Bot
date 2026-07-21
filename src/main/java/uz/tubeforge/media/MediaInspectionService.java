@@ -66,6 +66,25 @@ public class MediaInspectionService {
         if (text.contains("sign in to confirm your age") || text.contains("age-restricted")) {
             return new MediaProcessingException("AGE_RESTRICTED", "This video requires age verification and cannot be processed.");
         }
+        if (text.contains("sign in to confirm you’re not a bot")
+                || text.contains("sign in to confirm you're not a bot")
+                || text.contains("use --cookies-from-browser")
+                || text.contains("use --cookies for the authentication")) {
+            return new MediaProcessingException("YOUTUBE_AUTH_REQUIRED",
+                    "YouTube asked this server to verify itself. Configure YOUTUBE_COOKIES_FILE with an exported cookies.txt file or try again later.");
+        }
+        if (text.contains("http error 429") || text.contains("too many requests")) {
+            return new MediaProcessingException("YOUTUBE_RATE_LIMITED",
+                    "YouTube temporarily rate-limited this server. Wait a few minutes or configure YOUTUBE_COOKIES_FILE.");
+        }
+        if (text.contains("no supported javascript runtime") || text.contains("javascript runtime") && text.contains("missing")) {
+            return new MediaProcessingException("JS_RUNTIME_MISSING",
+                    "YouTube requires a JavaScript runtime. Install Deno and restart TubeForge.");
+        }
+        if (text.contains("ffmpeg not found") || text.contains("ffprobe not found")) {
+            return new MediaProcessingException("FFMPEG_MISSING",
+                    "FFmpeg could not be found. Check FFMPEG_PATH and FFPROBE_PATH.");
+        }
         if (text.contains("copyright")) return new MediaProcessingException("COPYRIGHT_BLOCK", "This video is blocked by YouTube.");
         return new MediaProcessingException("INSPECTION_FAILED", "This YouTube link could not be processed right now.");
     }

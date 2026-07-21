@@ -14,6 +14,7 @@ import uz.tubeforge.repository.MediaRequestRepository;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class MediaRequestService {
@@ -85,6 +86,12 @@ public class MediaRequestService {
     @Transactional(readOnly = true)
     public List<MediaRequest> recent(long userId, int limit) {
         return repository.findByTelegramUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, limit));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<MediaRequest> reusable(long userId, long chatId, ParsedYouTubeUrl url) {
+        return repository.findFirstByTelegramUserIdAndChatIdAndSourceUrlAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                userId, chatId, url.normalizedUrl(), uz.tubeforge.domain.RequestStatus.READY, clock.instant());
     }
 
     private MediaRequest requireOwnedOrSystem(String id) {

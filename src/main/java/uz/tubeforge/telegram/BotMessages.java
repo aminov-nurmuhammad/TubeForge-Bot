@@ -44,12 +44,15 @@ public class BotMessages {
             case LIVE -> "Livestream";
             default -> "YouTube Video";
         };
-        String extra = info.sourceType() == uz.tubeforge.domain.SourceType.PLAYLIST
-                ? "\n📚 <b>Items:</b> " + info.playlistCount() : "\n⏱ <b>Duration:</b> " + HumanFormat.duration(info.durationSeconds());
+        String extra = switch (info.sourceType()) {
+            case PLAYLIST -> "\n📚 <b>Items:</b> " + info.playlistCount();
+            case LIVE -> "\n🔴 <b>Status:</b> Live stream";
+            default -> "\n⏱ <b>Duration:</b> " + HumanFormat.duration(info.durationSeconds());
+        };
         return "🎬 <b>" + Html.escape(info.title()) + "</b>\n\n"
                 + "📺 <b>Channel:</b> " + Html.escape(info.channel())
                 + extra
-                + "\n👁 <b>Views:</b> " + HumanFormat.number(info.viewCount())
+                + (info.viewCount() > 0 ? "\n👁 <b>Views:</b> " + HumanFormat.number(info.viewCount()) : "")
                 + "\n🔗 <b>Type:</b> " + type
                 + "\n\nChoose what you want to create:";
     }

@@ -20,6 +20,8 @@ public class TelegramPollingService {
     private final TelegramUpdateRouter router;
     private final AtomicBoolean polling = new AtomicBoolean();
     private volatile long nextOffset;
+    private volatile long backoffUntilEpochMillis;
+    private volatile int consecutiveFailures;
 
     public TelegramPollingService(TelegramProperties properties, TelegramApiClient telegram,
                                   TelegramUpdateRouter router) {
@@ -43,17 +45,22 @@ public class TelegramPollingService {
 
     @Scheduled(fixedDelay = 500)
     public void poll() {
-        if (!enabled() || !polling.compareAndSet(false, true)) return;
+        if (!enabled() || System.currentTimeMillis() < backoffUntilEpochMillis
+                || !polling.compareAndSet(false, true)) return;
         try {
             List<TgUpdate> updates = telegram.getUpdates(nextOffset);
+            consecutiveFailures = 0;
+            backoffUntilEpochMillis = 0;
             for (TgUpdate update : updates) {
                 nextOffset = Math.max(nextOffset, update.updateId() + 1);
                 router.handle(update);
             }
         } catch (TelegramApiException e) {
             log.warn("Telegram polling error: {}", e.getMessage());
+            scheduleBackoff(e);
         } catch (Exception e) {
             log.error("Unexpected polling error", e);
+            scheduleBackoff(null);
         } finally {
             polling.set(false);
         }
@@ -61,5 +68,14 @@ public class TelegramPollingService {
 
     private boolean enabled() {
         return properties.pollingEnabled() && properties.configured();
+    }
+
+    private void scheduleBackoff(TelegramApiException error) {
+        consecutiveFailures = Math.min(10, consecutiveFailures + 1);
+        long exponentialSeconds = Math.min(60, 1L << Math.min(6, consecutiveFailures - 1));
+        long requestedSeconds = error == null ? 0 : error.getRetryAfterSeconds();
+        long conflictSeconds = error != null && error.getErrorCode() == 409 ? 15 : 0;
+        long delaySeconds = Math.max(exponentialSeconds, Math.max(requestedSeconds, conflictSeconds));
+        backoffUntilEpochMillis = System.currentTimeMillis() + delaySeconds * 1000;
     }
 }

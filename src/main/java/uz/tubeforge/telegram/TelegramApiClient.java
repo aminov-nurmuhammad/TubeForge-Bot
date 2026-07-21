@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 import uz.tubeforge.config.TelegramProperties;
 import uz.tubeforge.telegram.model.InlineKeyboard;
 import uz.tubeforge.telegram.model.TgMessage;
@@ -61,8 +60,18 @@ public class TelegramApiClient {
         body.put("text", text);
         body.put("parse_mode", "HTML");
         body.put("disable_web_page_preview", true);
-        if (keyboard != null) body.put("reply_markup", keyboard);
+        body.put("reply_markup", keyboard == null ? InlineKeyboard.of(List.of()) : keyboard);
         postJson("editMessageText", body, Duration.ofSeconds(30));
+    }
+
+    public void editCaption(long chatId, long messageId, String caption, InlineKeyboard keyboard) {
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("chat_id", chatId);
+        body.put("message_id", messageId);
+        body.put("caption", caption);
+        body.put("parse_mode", "HTML");
+        body.put("reply_markup", keyboard == null ? InlineKeyboard.of(List.of()) : keyboard);
+        postJson("editMessageCaption", body, Duration.ofSeconds(30));
     }
 
     public void answerCallback(String callbackId, String text, boolean alert) {
@@ -102,7 +111,7 @@ public class TelegramApiClient {
 
     public TgMessage sendAudio(long chatId, Path file, String caption, String title, String performer) {
         return upload("sendAudio", "audio", chatId, file, caption,
-                Map.of("title", safe(title), "performer", safe(performer)));
+                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)));
     }
 
     public TgMessage sendDocument(long chatId, Path file, String caption) {
@@ -138,10 +147,9 @@ public class TelegramApiClient {
                 .uri("/" + method)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(BodyInserters.fromMultipartData(multipart.build()))
-                .retrieve()
-                .bodyToMono(JsonNode.class)
+                .exchangeToMono(clientResponse -> clientResponse.bodyToMono(JsonNode.class))
                 .timeout(Duration.ofHours(2))
-                .onErrorResume(error -> Mono.error(new TelegramApiException(0, error.getMessage())))
+                .onErrorMap(this::mapTransportError)
                 .block();
         return objectMapper.convertValue(requireResult(response), TgMessage.class);
     }
@@ -151,10 +159,9 @@ public class TelegramApiClient {
                 .uri("/" + method)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
-                .retrieve()
-                .bodyToMono(JsonNode.class)
+                .exchangeToMono(clientResponse -> clientResponse.bodyToMono(JsonNode.class))
                 .timeout(timeout)
-                .onErrorResume(error -> Mono.error(new TelegramApiException(0, error.getMessage())))
+                .onErrorMap(this::mapTransportError)
                 .block();
         return requireResult(response);
     }
@@ -163,12 +170,22 @@ public class TelegramApiClient {
         if (response == null) throw new TelegramApiException(0, "Telegram returned an empty response");
         if (!response.path("ok").asBoolean(false)) {
             throw new TelegramApiException(response.path("error_code").asInt(0),
-                    response.path("description").asText("Telegram API request failed"));
+                    response.path("description").asText("Telegram API request failed"),
+                    response.path("parameters").path("retry_after").asInt(0));
         }
         return response.path("result");
     }
 
-    private String safe(String value) {
-        return value == null ? "" : value;
+    private Throwable mapTransportError(Throwable error) {
+        if (error instanceof TelegramApiException) return error;
+        String message = error.getMessage();
+        return new TelegramApiException(0, message == null || message.isBlank()
+                ? "Telegram API transport failed" : message);
+    }
+
+    private String safeMetadata(String value) {
+        if (value == null) return "";
+        String clean = value.strip();
+        return clean.length() <= 64 ? clean : clean.substring(0, 64);
     }
 }

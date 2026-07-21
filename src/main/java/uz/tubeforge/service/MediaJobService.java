@@ -5,12 +5,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.tubeforge.config.MediaProperties;
 import uz.tubeforge.config.TelegramProperties;
+import uz.tubeforge.config.FeatureProperties;
 import uz.tubeforge.domain.*;
 import uz.tubeforge.media.*;
 import uz.tubeforge.repository.DownloadJobRepository;
@@ -50,6 +52,7 @@ public class MediaJobService {
     private final KeyboardFactory keyboards;
     private final MediaProperties properties;
     private final TelegramProperties telegramProperties;
+    private final FeatureProperties featureProperties;
     private final TaskExecutor executor;
     private final Clock clock;
     private final Set<String> cancellationRequested = ConcurrentHashMap.newKeySet();
@@ -59,7 +62,7 @@ public class MediaJobService {
                            AccessService access, YtDlpCommandFactory commands, ManagedProcessRunner runner,
                            StorageService storage, MediaDeliveryService delivery, TelegramApiClient telegram,
                            BotMessages messages, KeyboardFactory keyboards, MediaProperties properties,
-                           TelegramProperties telegramProperties,
+                           TelegramProperties telegramProperties, FeatureProperties featureProperties,
                            @Qualifier("mediaJobExecutor") TaskExecutor executor, Clock clock) {
         this.jobs = jobs;
         this.requests = requests;
@@ -74,16 +77,25 @@ public class MediaJobService {
         this.keyboards = keyboards;
         this.properties = properties;
         this.telegramProperties = telegramProperties;
+        this.featureProperties = featureProperties;
         this.executor = executor;
         this.clock = clock;
     }
 
     public DownloadJob queue(long userId, String requestId, JobType type, String formatCode, ClipRange range) {
+        ensureEnabled(type);
+        String storedFormat = encodeFormat(formatCode, range);
+        jobs.findFirstByTelegramUserIdAndRequestIdAndJobTypeAndFormatCodeAndStatusInOrderByCreatedAtDesc(
+                userId, requestId, type, storedFormat,
+                List.of(JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.DELIVERING))
+                .ifPresent(existing -> {
+                    throw new MediaProcessingException("JOB_ALREADY_ACTIVE",
+                            "This exact job is already queued or running. Use /jobs to check it.");
+                });
         if (!access.canCreateJob(userId)) {
             throw new MediaProcessingException("DAILY_LIMIT", "You have reached your processing limit for the last 24 hours.");
         }
         MediaRequest request = requests.requireOwned(requestId, userId);
-        String storedFormat = encodeFormat(formatCode, range);
         if (storedFormat.length() > 64) throw new IllegalArgumentException("Format selection is too long");
         DownloadJob job = DownloadJob.queued(request, type, storedFormat, clock.instant());
         jobs.save(job);
@@ -99,7 +111,14 @@ public class MediaJobService {
         }
         job.setProgressMessageId(progress.messageId());
         jobs.save(job);
-        executor.execute(() -> execute(job.getId()));
+        try {
+            executor.execute(() -> execute(job.getId()));
+        } catch (TaskRejectedException e) {
+            job.fail("QUEUE_FULL", "The processing queue is full", clock.instant());
+            jobs.save(job);
+            safeEdit(job, "⚠️ <b>Server is busy</b>\n\nThe processing queue is full. Please try again shortly.", null);
+            throw new MediaProcessingException("QUEUE_FULL", "The processing queue is full. Please try again shortly.", e);
+        }
         return job;
     }
 
@@ -132,7 +151,12 @@ public class MediaJobService {
         for (DownloadJob job : unfinished) {
             job.requeue();
             jobs.save(job);
-            executor.execute(() -> execute(job.getId()));
+            try {
+                executor.execute(() -> execute(job.getId()));
+            } catch (TaskRejectedException e) {
+                log.warn("Recovery queue is full; job {} remains queued", job.getId());
+                break;
+            }
         }
     }
 
@@ -185,6 +209,9 @@ public class MediaJobService {
         if (outputs.isEmpty()) throw new MediaProcessingException("OUTPUT_MISSING", "No output file was created.");
         if (job.getJobType() == JobType.ALL_THUMBNAILS) {
             List<Path> images = outputs.stream().filter(this::isImage).toList();
+            if (images.isEmpty()) {
+                throw new MediaProcessingException("THUMBNAIL_MISSING", "YouTube did not return any downloadable thumbnails.");
+            }
             Path zip = storage.zip(directory, images, "TubeForge-thumbnails.zip");
             var result = delivery.deliver(job.getChatId(), zip, JobType.ALL_THUMBNAILS, info, user);
             return new DeliverySummary(zip.getFileName().toString(), result.totalBytes());
@@ -281,6 +308,24 @@ public class MediaJobService {
             return new MediaProcessingException("NO_SUBTITLES", "No subtitles are available in the selected language.");
         }
         if (lower.contains("private video")) return new MediaProcessingException("PRIVATE_VIDEO", "This video is private.");
+        if (lower.contains("sign in to confirm you’re not a bot")
+                || lower.contains("sign in to confirm you're not a bot")
+                || lower.contains("use --cookies for the authentication")) {
+            return new MediaProcessingException("YOUTUBE_AUTH_REQUIRED",
+                    "YouTube asked this server to verify itself. Configure YOUTUBE_COOKIES_FILE or try again later.");
+        }
+        if (lower.contains("http error 429") || lower.contains("too many requests")) {
+            return new MediaProcessingException("YOUTUBE_RATE_LIMITED",
+                    "YouTube temporarily rate-limited this server. Wait a few minutes and try again.");
+        }
+        if (lower.contains("ffmpeg not found") || lower.contains("ffprobe not found")) {
+            return new MediaProcessingException("FFMPEG_MISSING",
+                    "FFmpeg could not be found. Check FFMPEG_PATH and FFPROBE_PATH.");
+        }
+        if (lower.contains("postprocessing") && lower.contains("error")) {
+            return new MediaProcessingException("POSTPROCESSING_FAILED",
+                    "The media downloaded, but FFmpeg could not create the requested output format.");
+        }
         if (lower.contains("video unavailable") || lower.contains("not available")) {
             return new MediaProcessingException("UNAVAILABLE", "The video became unavailable or is restricted in the server's region.");
         }
@@ -321,6 +366,21 @@ public class MediaJobService {
 
     private boolean telegramConfigured() {
         return telegramProperties.configured();
+    }
+
+    private void ensureEnabled(JobType type) {
+        boolean enabled = switch (type) {
+            case VIDEO -> featureProperties.videoDownload();
+            case AUDIO -> featureProperties.audioDownload();
+            case THUMBNAIL, ALL_THUMBNAILS -> featureProperties.thumbnails();
+            case SUBTITLES -> featureProperties.subtitles();
+            case TRANSCRIPT -> featureProperties.transcripts();
+            case CLIP_VIDEO, CLIP_AUDIO -> featureProperties.clips();
+            case PLAYLIST_VIDEO, PLAYLIST_AUDIO -> featureProperties.playlists();
+        };
+        if (!enabled) {
+            throw new MediaProcessingException("FEATURE_DISABLED", "This tool is currently disabled by the bot owner.");
+        }
     }
 
     private boolean matchesMediaType(Path path, JobType type) {
