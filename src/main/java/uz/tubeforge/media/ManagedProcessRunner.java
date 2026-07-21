@@ -34,6 +34,9 @@ public class ManagedProcessRunner {
             ProcessBuilder builder = new ProcessBuilder(command)
                     .directory(workingDirectory.toFile())
                     .redirectErrorStream(true);
+            builder.environment().put("PYTHONUTF8", "1");
+            builder.environment().put("PYTHONIOENCODING", "utf-8");
+            builder.environment().put("NO_COLOR", "1");
             process = builder.start();
             activeProcesses.put(processId, process);
             StringBuilder output = new StringBuilder();
@@ -53,8 +56,10 @@ public class ManagedProcessRunner {
             if (process != null) terminate(process);
             return new ProcessResult(-1, "Interrupted", false, true);
         } catch (IOException e) {
+            String executable = command == null || command.isEmpty() ? "media tool" : command.get(0);
+            log.error("Could not start media executable '{}': {}", executable, e.getMessage());
             throw new MediaProcessingException("PROCESS_START_FAILED",
-                    "A required media tool could not be started.", e);
+                    "Could not start the configured media tool. Check this executable path: " + executable, e);
         } finally {
             activeProcesses.remove(processId);
             readerExecutor.shutdownNow();

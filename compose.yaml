@@ -27,6 +27,9 @@ services:
       DATABASE_USERNAME: tubeforge
       DATABASE_PASSWORD: tubeforge_local_password
       MEDIA_STORAGE_PATH: /app/storage
+      YT_DLP_PATH: yt-dlp
+      FFMPEG_PATH: ffmpeg
+      FFPROBE_PATH: ffprobe
     depends_on:
       postgres:
         condition: service_healthy

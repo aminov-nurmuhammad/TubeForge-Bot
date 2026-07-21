@@ -6,7 +6,7 @@ RUN mvn -B -q dependency:go-offline
 COPY src ./src
 RUN mvn -B -q clean package
 
-FROM denoland/deno:bin-2.4.5 AS deno
+FROM denoland/deno:bin-2.9.3 AS deno
 
 FROM eclipse-temurin:17-jre-jammy AS runtime
 ARG YT_DLP_VERSION=2026.7.4
@@ -18,7 +18,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=deno /deno /usr/local/bin/deno
 WORKDIR /app
-COPY --from=build /workspace/target/tubeforge-bot-1.0.0.jar /app/tubeforge.jar
+COPY --from=build /workspace/target/tubeforge-bot-2.0.0.jar /app/tubeforge.jar
 RUN mkdir -p /app/data /app/storage && chown -R tubeforge:tubeforge /app
 USER tubeforge
 EXPOSE 8080

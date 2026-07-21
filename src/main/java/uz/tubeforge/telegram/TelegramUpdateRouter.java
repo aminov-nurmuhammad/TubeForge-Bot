@@ -45,7 +45,7 @@ public class TelegramUpdateRouter {
                                 YouTubeUrlParser urlParser, BotMessages messages, KeyboardFactory keyboards,
                                 FeatureProperties features, AppUserRepository userRepository,
                                 DownloadJobRepository jobRepository,
-                                @Qualifier("mediaJobExecutor") TaskExecutor executor) {
+                                @Qualifier("mediaInspectionExecutor") TaskExecutor executor) {
         this.telegram = telegram;
         this.users = users;
         this.access = access;
@@ -216,6 +216,12 @@ public class TelegramUpdateRouter {
     }
 
     private void inspectLink(AppUser user, long chatId, ParsedYouTubeUrl url) {
+        Optional<MediaRequest> cached = requests.reusable(user.getTelegramUserId(), chatId, url);
+        if (cached.isPresent()) {
+            MediaRequest request = cached.orElseThrow();
+            sendCachedPreview(chatId, request, requests.info(request));
+            return;
+        }
         MediaRequest request = requests.create(user.getTelegramUserId(), chatId, url);
         TgMessage progress = telegram.sendMessage(chatId, messages.inspecting(), null);
         requests.attachPreviewMessage(request.getId(), progress.messageId());
@@ -223,7 +229,7 @@ public class TelegramUpdateRouter {
             try {
                 MediaInfo info = inspection.inspect(url);
                 requests.markReady(request.getId(), info);
-                telegram.editMessage(chatId, progress.messageId(), messages.preview(info), keyboards.preview(request.getId(), info));
+                sendInspectionPreview(chatId, progress.messageId(), request.getId(), info);
             } catch (MediaProcessingException e) {
                 requests.markFailed(request.getId());
                 telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\n"
@@ -234,6 +240,41 @@ public class TelegramUpdateRouter {
                 telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\nAn unexpected server error occurred.", null);
             }
         });
+    }
+
+    private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info) {
+        try {
+            if (info.thumbnailUrl() != null && !info.thumbnailUrl().isBlank()) {
+                TgMessage message = telegram.sendPhotoUrl(chatId, info.thumbnailUrl(), messages.preview(info),
+                        keyboards.preview(request.getId(), info));
+                requests.attachPreviewMessage(request.getId(), message.messageId());
+                return;
+            }
+        } catch (TelegramApiException e) {
+            log.debug("Telegram could not render cached thumbnail for {}: {}", request.getId(), e.getMessage());
+        }
+        TgMessage message = telegram.sendMessage(chatId, messages.preview(info), keyboards.preview(request.getId(), info));
+        requests.attachPreviewMessage(request.getId(), message.messageId());
+    }
+
+    private void sendInspectionPreview(long chatId, long progressMessageId, String requestId, MediaInfo info) {
+        if (info.thumbnailUrl() != null && !info.thumbnailUrl().isBlank()) {
+            try {
+                TgMessage preview = telegram.sendPhotoUrl(chatId, info.thumbnailUrl(), messages.preview(info),
+                        keyboards.preview(requestId, info));
+                requests.attachPreviewMessage(requestId, preview.messageId());
+                try {
+                    telegram.deleteMessage(chatId, progressMessageId);
+                } catch (TelegramApiException e) {
+                    log.debug("Could not remove inspection message {}: {}", progressMessageId, e.getMessage());
+                }
+                return;
+            } catch (TelegramApiException e) {
+                log.debug("Telegram could not render thumbnail for {}: {}", requestId, e.getMessage());
+            }
+        }
+        telegram.editMessage(chatId, progressMessageId, messages.preview(info), keyboards.preview(requestId, info));
+        requests.attachPreviewMessage(requestId, progressMessageId);
     }
 
     private void acceptTerms(long chatId, long messageId, AppUser user) {

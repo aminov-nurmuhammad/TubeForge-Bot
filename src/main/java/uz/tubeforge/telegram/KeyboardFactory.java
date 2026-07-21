@@ -57,8 +57,12 @@ public class KeyboardFactory {
                 rows.add(row);
             }
         }
-        rows.add(List.of(callback("✨ AI Studio", of("ai", requestId)),
-                callback("ℹ️ More info", of("info", requestId))));
+        if (features.aiComingSoon()) {
+            rows.add(List.of(callback("✨ AI Studio", of("ai", requestId)),
+                    callback("ℹ️ More info", of("info", requestId))));
+        } else {
+            rows.add(List.of(callback("ℹ️ More info", of("info", requestId))));
+        }
         rows.add(List.of(callback("❌ Close", of("close"))));
         return InlineKeyboard.of(rows);
     }

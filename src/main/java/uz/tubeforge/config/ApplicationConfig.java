@@ -23,11 +23,20 @@ public class ApplicationConfig {
 
     @Bean("mediaJobExecutor")
     TaskExecutor mediaJobExecutor(MediaProperties properties) {
+        return executor(properties.maxConcurrentJobs(), 100, "media-job-");
+    }
+
+    @Bean("mediaInspectionExecutor")
+    TaskExecutor mediaInspectionExecutor(MediaProperties properties) {
+        return executor(properties.maxConcurrentInspections(), 200, "media-inspect-");
+    }
+
+    private TaskExecutor executor(int size, int queueCapacity, String prefix) {
         var executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(properties.maxConcurrentJobs());
-        executor.setMaxPoolSize(properties.maxConcurrentJobs());
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("media-job-");
+        executor.setCorePoolSize(size);
+        executor.setMaxPoolSize(size);
+        executor.setQueueCapacity(queueCapacity);
+        executor.setThreadNamePrefix(prefix);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();

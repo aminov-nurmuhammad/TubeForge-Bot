@@ -2,10 +2,13 @@ spring:
   application:
     name: tubeforge-bot
 
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/youtube
-    username: postgres
-    password: "1122qaqa"
+    url: ${DATABASE_URL:jdbc:h2:file:./data/tubeforge;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DATABASE_USERNAME:sa}
+    password: ${DATABASE_PASSWORD:}
 
   jpa:
     open-in-view: false
@@ -38,7 +41,7 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
   info:
     env:
       enabled: true
@@ -46,51 +49,57 @@ management:
 info:
   app:
     name: TubeForge Bot
-    version: 1.0.0
+    version: 2.0.0
     description: Self-hosted Telegram media toolkit
 
 tubeforge:
   telegram:
-    token: "8879214208:AAGeFsbY899-fXaW9Enj0ioxp5w_qCcHJ6A"
-    api-base-url: https://api.telegram.org
-    polling-enabled: true
-    polling-timeout-seconds: 25
-    max-upload-bytes: 50000000
+    token: ${TELEGRAM_BOT_TOKEN:}
+    api-base-url: ${TELEGRAM_API_BASE_URL:https://api.telegram.org}
+    polling-enabled: ${TELEGRAM_POLLING_ENABLED:true}
+    polling-timeout-seconds: ${TELEGRAM_POLLING_TIMEOUT_SECONDS:25}
+    max-upload-bytes: ${TELEGRAM_MAX_UPLOAD_BYTES:50000000}
 
   media:
-    yt-dlp-path: "C:/TubeForgeTools/yt-dlp.exe"
-    ffmpeg-path: "C:/TubeForgeTools/ffmpeg/bin/ffmpeg.exe"
-    ffprobe-path: "C:/TubeForgeTools/ffmpeg/bin/ffprobe.exe"
-    storage-path: "./storage"
-    process-timeout: PT2H
-    metadata-timeout: PT90S
-    max-video-duration-seconds: 10800
-    max-playlist-items: 20
-    max-concurrent-jobs: 1
-    cache-retention: PT24H
-    progress-update-interval: PT3S
+    yt-dlp-path: ${YT_DLP_PATH:yt-dlp}
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+    ffprobe-path: ${FFPROBE_PATH:ffprobe}
+    cookies-file: ${YOUTUBE_COOKIES_FILE:}
+    proxy-url: ${YOUTUBE_PROXY_URL:}
+    storage-path: ${MEDIA_STORAGE_PATH:./storage}
+    process-timeout: ${MEDIA_PROCESS_TIMEOUT:PT2H}
+    metadata-timeout: ${MEDIA_METADATA_TIMEOUT:PT90S}
+    socket-timeout: ${MEDIA_SOCKET_TIMEOUT:PT30S}
+    max-video-duration-seconds: ${MAX_VIDEO_DURATION_SECONDS:10800}
+    max-playlist-items: ${MAX_PLAYLIST_ITEMS:20}
+    max-concurrent-jobs: ${MAX_CONCURRENT_JOBS:2}
+    max-concurrent-inspections: ${MAX_CONCURRENT_INSPECTIONS:4}
+    concurrent-fragments: ${YT_DLP_CONCURRENT_FRAGMENTS:4}
+    extractor-retries: ${YT_DLP_RETRIES:5}
+    cache-retention: ${MEDIA_CACHE_RETENTION:PT24H}
+    progress-update-interval: ${PROGRESS_UPDATE_INTERVAL:PT3S}
 
   access:
-    mode: PUBLIC
-    admin-user-ids: []
-    allowed-user-ids: []
-    daily-job-limit: 20
-    require-terms-acceptance: true
+    mode: ${ACCESS_MODE:PUBLIC}
+    admin-user-ids: ${ADMIN_USER_IDS:}
+    allowed-user-ids: ${ALLOWED_USER_IDS:}
+    daily-job-limit: ${DAILY_JOB_LIMIT:20}
+    require-terms-acceptance: ${REQUIRE_TERMS_ACCEPTANCE:true}
 
   features:
-    video-download: true
-    audio-download: true
-    thumbnails: true
-    subtitles: true
-    transcripts: true
-    clips: true
-    playlists: true
+    video-download: ${FEATURE_VIDEO_DOWNLOAD:true}
+    audio-download: ${FEATURE_AUDIO_DOWNLOAD:true}
+    thumbnails: ${FEATURE_THUMBNAILS:true}
+    subtitles: ${FEATURE_SUBTITLES:true}
+    transcripts: ${FEATURE_TRANSCRIPTS:true}
+    clips: ${FEATURE_CLIPS:true}
+    playlists: ${FEATURE_PLAYLISTS:true}
     ai-coming-soon: true
 
 logging:
   level:
     root: INFO
-    uz.tubeforge: INFO
+    uz.tubeforge: ${LOG_LEVEL:INFO}
     org.hibernate.SQL: WARN
   pattern:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} - %msg%n"

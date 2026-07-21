@@ -23,7 +23,7 @@ public class MediaMetadataParser {
                 text(root, "upload_date", ""),
                 text(root, "description", ""),
                 root.path("playlist_count").asInt(root.path("entries").size()),
-                parseFormats(root.path("formats")),
+                parseFormats(root.path("formats"), root.path("duration").asLong(0)),
                 parseSubtitles(root)
         );
     }
@@ -39,14 +39,22 @@ public class MediaMetadataParser {
         return url.contains("/shorts/") ? SourceType.SHORT : hint;
     }
 
-    private List<VideoFormatOption> parseFormats(JsonNode formats) {
+    private List<VideoFormatOption> parseFormats(JsonNode formats, long durationSeconds) {
         if (!formats.isArray()) return List.of();
+        long bestAudioBytes = 0;
+        for (JsonNode format : formats) {
+            if (!"none".equals(format.path("acodec").asText("none"))
+                    && "none".equals(format.path("vcodec").asText("none"))) {
+                bestAudioBytes = Math.max(bestAudioBytes, estimatedSize(format, durationSeconds));
+            }
+        }
         Map<Integer, VideoFormatOption> bestByHeight = new TreeMap<>(Comparator.reverseOrder());
         for (JsonNode format : formats) {
             int height = format.path("height").asInt(0);
             String vcodec = format.path("vcodec").asText("none");
             if (height <= 0 || "none".equals(vcodec)) continue;
-            long size = format.path("filesize").asLong(format.path("filesize_approx").asLong(0));
+            long size = estimatedSize(format, durationSeconds);
+            if ("none".equals(format.path("acodec").asText("none"))) size += bestAudioBytes;
             int fps = (int) Math.round(format.path("fps").asDouble(0));
             String ext = format.path("ext").asText("mp4");
             VideoFormatOption candidate = new VideoFormatOption(height, size, fps, ext);
@@ -56,6 +64,13 @@ public class MediaMetadataParser {
             }
         }
         return bestByHeight.values().stream().limit(10).toList();
+    }
+
+    private long estimatedSize(JsonNode format, long durationSeconds) {
+        long exact = format.path("filesize").asLong(format.path("filesize_approx").asLong(0));
+        if (exact > 0 || durationSeconds <= 0) return exact;
+        double bitrateKbps = format.path("tbr").asDouble(0);
+        return bitrateKbps <= 0 ? 0 : Math.round(bitrateKbps * 1000 / 8 * durationSeconds);
     }
 
     private List<SubtitleOption> parseSubtitles(JsonNode root) {

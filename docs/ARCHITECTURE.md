@@ -24,7 +24,7 @@ stateDiagram-v2
     DELIVERING --> FAILED
 ```
 
-The executor has a configurable fixed concurrency and a bounded queue. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
+Metadata inspection and media work use separate bounded executors, so a long download cannot freeze new-link previews. The media executor has configurable fixed concurrency and a bounded queue. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
 
 ## Persistence
 
@@ -37,10 +37,10 @@ Flyway owns the schema. H2 is the zero-setup development database; the Docker de
 - Process commands never pass through a shell.
 - Job and request ownership is checked on every callback.
 - Callback payloads are capped at Telegram's 64-byte limit.
-- The application does not accept cookies, credentials or user-supplied command options.
+- Telegram users cannot supply cookies, credentials, proxies or command options. An operator may configure a private cookies file or proxy through local environment variables.
 - Media directories are resolved beneath one configured storage root.
 - Tokens and passwords are environment variables excluded by `.gitignore`.
 
 ## Delivery
 
-Small results are sent directly. Large video/audio is compressed toward the configured ceiling and, when necessary, segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely.
+Video delivery first verifies both streams and normalizes codecs/container for Telegram playback. Small results are sent directly. Large video/audio is compressed toward the configured ceiling and, when necessary, segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely. Inline media failures fall back to document delivery when Telegram permits it.

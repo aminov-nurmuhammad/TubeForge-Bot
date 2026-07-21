@@ -29,6 +29,41 @@ public class MediaFileTools {
         try { return Double.parseDouble(result.output().trim()); } catch (NumberFormatException ignored) { return 0; }
     }
 
+    public Path prepareTelegramVideo(Path input) {
+        String videoCodec = codec(input, "v:0");
+        String audioCodec = codec(input, "a:0");
+        if (videoCodec.isBlank()) {
+            throw new MediaProcessingException("VIDEO_STREAM_MISSING", "The downloaded file does not contain a video stream.");
+        }
+        if (audioCodec.isBlank()) {
+            throw new MediaProcessingException("AUDIO_TRACK_MISSING",
+                    "YouTube returned a video-only stream. TubeForge stopped it instead of sending a silent video; try the link again.");
+        }
+
+        Path output = input.getParent().resolve("telegram-" + stripExtension(input.getFileName().toString()) + ".mp4");
+        List<String> command = new ArrayList<>(List.of(
+                properties.ffmpegPath(), "-y", "-i", input.toString(),
+                "-map", "0:v:0", "-map", "0:a:0", "-map_metadata", "0"
+        ));
+        if ("h264".equals(videoCodec)) {
+            command.addAll(List.of("-c:v", "copy"));
+        } else {
+            command.addAll(List.of("-c:v", "libx264", "-preset", "veryfast", "-crf", "23"));
+        }
+        if ("aac".equals(audioCodec)) {
+            command.addAll(List.of("-c:a", "copy"));
+        } else {
+            command.addAll(List.of("-c:a", "aac", "-b:a", "160k"));
+        }
+        command.addAll(List.of("-movflags", "+faststart", "-avoid_negative_ts", "make_zero", output.toString()));
+        ProcessResult result = runner.capture(command, input.getParent(), properties.processTimeout());
+        if (!result.successful() || !Files.isRegularFile(output) || size(output) == 0) {
+            throw new MediaProcessingException("VIDEO_NORMALIZATION_FAILED",
+                    "The video was downloaded but could not be prepared for reliable Telegram playback.");
+        }
+        return output;
+    }
+
     public Path compressVideo(Path input, long targetBytes) {
         double duration = durationSeconds(input);
         if (duration <= 0) throw new MediaProcessingException("DURATION_UNKNOWN", "This large video could not be compressed safely.");
@@ -37,7 +72,7 @@ public class MediaFileTools {
         long videoKbps = Math.max(120, totalKbps - audioKbps);
         Path output = input.getParent().resolve("compressed-" + stripExtension(input.getFileName().toString()) + ".mp4");
         List<String> command = List.of(properties.ffmpegPath(), "-y", "-i", input.toString(),
-                "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast",
+                "-map", "0:v:0", "-map", "0:a:0", "-c:v", "libx264", "-preset", "veryfast",
                 "-b:v", videoKbps + "k", "-maxrate", Math.round(videoKbps * 1.15) + "k",
                 "-bufsize", Math.round(videoKbps * 2.0) + "k", "-c:a", "aac", "-b:a", audioKbps + "k",
                 "-movflags", "+faststart", output.toString());
@@ -83,6 +118,15 @@ public class MediaFileTools {
 
     private long size(Path path) {
         try { return Files.size(path); } catch (IOException e) { return 0; }
+    }
+
+    private String codec(Path input, String stream) {
+        List<String> command = List.of(properties.ffprobePath(), "-v", "error", "-select_streams", stream,
+                "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", input.toString());
+        ProcessResult result = runner.capture(command, input.getParent(), Duration.ofSeconds(30));
+        if (!result.successful()) return "";
+        return result.output().lines().map(String::strip).filter(line -> !line.isBlank()).findFirst().orElse("")
+                .toLowerCase(Locale.ROOT);
     }
 
     private String extension(Path path) {
