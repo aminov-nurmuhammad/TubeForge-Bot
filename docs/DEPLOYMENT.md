@@ -47,11 +47,19 @@ For a small machine, keep:
 
 ```dotenv
 MAX_CONCURRENT_JOBS=1
+MAX_CONCURRENT_INSPECTIONS=2
+MAX_QUEUED_JOBS=200
 MAX_PLAYLIST_ITEMS=10
 MAX_VIDEO_DURATION_SECONDS=7200
 ```
 
 FFmpeg conversion is CPU-intensive. Increasing concurrency is useful only when the host has enough CPU, memory, disk and outbound bandwidth.
+
+For a larger single host, begin with one media process per two CPU cores, four to eight inspection workers and a bounded queue. The global `file_id` cache serves repeat traffic without consuming media-worker capacity. Watch `/actuator/metrics`, PostgreSQL connections, disk space and outbound bandwidth before raising concurrency.
+
+## Optional local LLM
+
+The default AI engine needs no extra process. To enable deeper Ollama output, run Ollama on the same host, pull a model, then set `AI_PROVIDER=ollama`, `OLLAMA_MODEL` and `OLLAMA_BASE_URL`. In Docker Desktop the host URL is commonly `http://host.docker.internal:11434`; on Linux Compose, explicitly expose or network the Ollama service. Failure automatically falls back to the built-in engine.
 
 ## Private mode
 

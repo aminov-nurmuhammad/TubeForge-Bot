@@ -40,7 +40,7 @@ class MediaDeliveryServiceTest {
         service.deliver(10, wav, JobType.AUDIO, info, user);
 
         verify(telegram).sendDocument(eq(10L), eq(wav), anyString());
-        verify(telegram, never()).sendAudio(anyLong(), any(), anyString(), anyString(), anyString());
+        verify(telegram, never()).sendAudio(anyLong(), any(Path.class), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -57,7 +57,7 @@ class MediaDeliveryServiceTest {
     @Test
     void fallsBackToDocumentWhenTelegramRejectsAPhoto() throws Exception {
         Path photo = Files.write(directory.resolve("thumb.jpg"), new byte[] {1, 2, 3});
-        when(telegram.sendPhoto(anyLong(), any(), anyString()))
+        when(telegram.sendPhoto(anyLong(), any(Path.class), anyString()))
                 .thenThrow(new TelegramApiException(400, "wrong file identifier"));
 
         service.deliver(10, photo, JobType.THUMBNAIL, info, user);

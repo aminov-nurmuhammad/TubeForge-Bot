@@ -4,6 +4,8 @@
 
 Never commit `.env`, Telegram bot tokens, database passwords, cookies, browser profiles, or user media. TubeForge never accepts cookies or commands supplied by Telegram users. Operators may configure a private Netscape cookies file locally through `YOUTUBE_COOKIES_FILE`; it remains outside the repository.
 
+The default AI provider runs inside the Java process. When `AI_PROVIDER=ollama`, subtitle text is sent only to the operator-configured Ollama URL. Do not point this setting at an untrusted remote service unless its data-handling policy is acceptable.
+
 If a token is exposed, revoke it immediately through `@BotFather`, create a new token, update the deployment, and remove the exposed value from Git history.
 
 ## Supported content

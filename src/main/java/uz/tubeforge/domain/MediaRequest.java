@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 
 import java.time.Instant;
 import java.util.UUID;
+import uz.tubeforge.util.Sha256;
 
 @Entity
 @Table(name = "media_requests")
@@ -22,6 +23,9 @@ public class MediaRequest {
 
     @Column(name = "source_url", nullable = false, columnDefinition = "TEXT")
     private String sourceUrl;
+
+    @Column(name = "source_url_hash", length = 64)
+    private String sourceUrlHash;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false)
@@ -54,6 +58,9 @@ public class MediaRequest {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(name = "metadata_inspected_at", nullable = false)
+    private Instant metadataInspectedAt;
+
     protected MediaRequest() {
     }
 
@@ -64,15 +71,32 @@ public class MediaRequest {
         request.telegramUserId = userId;
         request.chatId = chatId;
         request.sourceUrl = url;
+        request.sourceUrlHash = Sha256.hex(url);
         request.sourceType = type;
         request.status = RequestStatus.INSPECTING;
         request.createdAt = now;
         request.expiresAt = expiresAt;
+        request.metadataInspectedAt = now;
+        return request;
+    }
+
+    public static MediaRequest cached(long userId, long chatId, String url, SourceType type,
+                                      MediaRequest source, Instant now, Instant expiresAt) {
+        MediaRequest request = inspecting(userId, chatId, url, type, now, expiresAt);
+        request.sourceId = source.sourceId;
+        request.title = source.title;
+        request.channelName = source.channelName;
+        request.durationSeconds = source.durationSeconds;
+        request.thumbnailUrl = source.thumbnailUrl;
+        request.metadataJson = source.metadataJson;
+        request.metadataInspectedAt = source.metadataInspectedAt;
+        request.sourceType = source.sourceType;
+        request.status = RequestStatus.READY;
         return request;
     }
 
     public void ready(String sourceId, String title, String channelName, Long durationSeconds,
-                      String thumbnailUrl, String metadataJson, SourceType type) {
+                      String thumbnailUrl, String metadataJson, SourceType type, Instant inspectedAt) {
         this.sourceId = sourceId;
         this.title = title;
         this.channelName = channelName;
@@ -80,6 +104,7 @@ public class MediaRequest {
         this.thumbnailUrl = thumbnailUrl;
         this.metadataJson = metadataJson;
         this.sourceType = type;
+        this.metadataInspectedAt = inspectedAt;
         this.status = RequestStatus.READY;
     }
 
@@ -91,6 +116,7 @@ public class MediaRequest {
     public Long getChatId() { return chatId; }
     public Long getPreviewMessageId() { return previewMessageId; }
     public String getSourceUrl() { return sourceUrl; }
+    public String getSourceUrlHash() { return sourceUrlHash; }
     public SourceType getSourceType() { return sourceType; }
     public String getSourceId() { return sourceId; }
     public String getTitle() { return title; }
@@ -101,4 +127,5 @@ public class MediaRequest {
     public RequestStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
+    public Instant getMetadataInspectedAt() { return metadataInspectedAt; }
 }

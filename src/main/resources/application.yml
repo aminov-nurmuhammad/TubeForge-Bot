@@ -38,7 +38,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
       show-details: when_authorized
@@ -49,7 +49,7 @@ management:
 info:
   app:
     name: TubeForge Bot
-    version: 2.0.0
+    version: 3.0.0
     description: Self-hosted Telegram media toolkit
 
 tubeforge:
@@ -74,10 +74,24 @@ tubeforge:
     max-playlist-items: ${MAX_PLAYLIST_ITEMS:20}
     max-concurrent-jobs: ${MAX_CONCURRENT_JOBS:2}
     max-concurrent-inspections: ${MAX_CONCURRENT_INSPECTIONS:4}
+    max-queued-jobs: ${MAX_QUEUED_JOBS:500}
+    max-queued-inspections: ${MAX_QUEUED_INSPECTIONS:1000}
     concurrent-fragments: ${YT_DLP_CONCURRENT_FRAGMENTS:4}
     extractor-retries: ${YT_DLP_RETRIES:5}
     cache-retention: ${MEDIA_CACHE_RETENTION:PT24H}
     progress-update-interval: ${PROGRESS_UPDATE_INTERVAL:PT3S}
+
+  cache:
+    enabled: ${CACHE_ENABLED:true}
+    artifact-retention: ${ARTIFACT_CACHE_RETENTION:PT720H}
+    insight-retention: ${AI_CACHE_RETENTION:PT168H}
+
+  ai:
+    provider: ${AI_PROVIDER:local}
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${OLLAMA_MODEL:qwen3:4b}
+    timeout: ${AI_TIMEOUT:PT3M}
+    max-transcript-characters: ${AI_MAX_TRANSCRIPT_CHARACTERS:30000}
 
   access:
     mode: ${ACCESS_MODE:PUBLIC}
@@ -94,7 +108,7 @@ tubeforge:
     transcripts: ${FEATURE_TRANSCRIPTS:true}
     clips: ${FEATURE_CLIPS:true}
     playlists: ${FEATURE_PLAYLISTS:true}
-    ai-coming-soon: true
+    ai-studio: ${FEATURE_AI_STUDIO:true}
 
 logging:
   level:

@@ -11,6 +11,8 @@ import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.MediaProcessingException;
 import uz.tubeforge.telegram.TelegramApiClient;
 import uz.tubeforge.telegram.TelegramApiException;
+import uz.tubeforge.telegram.TelegramFileReference;
+import uz.tubeforge.telegram.model.TgMessage;
 import uz.tubeforge.util.Html;
 
 import java.io.IOException;
@@ -51,10 +53,11 @@ public class MediaDeliveryService {
         }
 
         List<Path> delivered = new ArrayList<>();
+        List<TelegramFileReference> references = new ArrayList<>();
         if (size(prepared) <= limit) {
-            sendOne(chatId, prepared, type, info, user, null);
+            TelegramFileReference.from(sendOne(chatId, prepared, type, info, user, null)).ifPresent(references::add);
             delivered.add(prepared);
-            return new DeliveryResult(delivered, size(prepared));
+            return new DeliveryResult(delivered, size(prepared), references);
         }
 
         if (!mediaVideo && !mediaAudio) {
@@ -71,39 +74,41 @@ public class MediaDeliveryService {
             if (size(part) > limit && mediaVideo) part = fileTools.compressVideo(part, (long) (limit * 0.90));
             if (size(part) > limit && mediaAudio) part = fileTools.compressAudio(part, (long) (limit * 0.90));
             if (size(part) > limit) throw new MediaProcessingException("PART_TOO_LARGE", "A media part remains too large to upload.");
-            sendOne(chatId, part, type, info, user, "Part " + (i + 1) + "/" + parts.size());
+            TelegramFileReference.from(sendOne(chatId, part, type, info, user,
+                    "Part " + (i + 1) + "/" + parts.size())).ifPresent(references::add);
             delivered.add(part);
         }
         long total = delivered.stream().mapToLong(this::size).sum();
-        return new DeliveryResult(delivered, total);
+        return new DeliveryResult(delivered, total, references);
     }
 
-    private void sendOne(long chatId, Path file, JobType type, MediaInfo info, AppUser user, String part) {
+    private TgMessage sendOne(long chatId, Path file, JobType type, MediaInfo info, AppUser user, String part) {
         String caption = "✅ <b>TubeForge</b>\n" + Html.escape(info.title())
                 + (part == null ? "" : "\n" + part);
         if (type == JobType.THUMBNAIL) {
             try {
-                telegram.sendPhoto(chatId, file, caption);
+                return telegram.sendPhoto(chatId, file, caption);
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline photo {}: {}", file.getFileName(), e.getMessage());
-                telegram.sendDocument(chatId, file, caption);
+                return telegram.sendDocument(chatId, file, caption);
             }
         } else if (isVideo(type) && !user.isSendAsDocument()) {
             try {
-                telegram.sendVideo(chatId, file, caption, true);
+                return telegram.sendVideo(chatId, file, caption, true);
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline video {}: {}", file.getFileName(), e.getMessage());
-                telegram.sendDocument(chatId, file, caption + "\n\n⚠️ Sent as a document because Telegram rejected inline playback.");
+                return telegram.sendDocument(chatId, file,
+                        caption + "\n\n⚠️ Sent as a document because Telegram rejected inline playback.");
             }
         } else if (isAudio(type) && isTelegramAudio(file)) {
             try {
-                telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
+                return telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline audio {}: {}", file.getFileName(), e.getMessage());
-                telegram.sendDocument(chatId, file, caption);
+                return telegram.sendDocument(chatId, file, caption);
             }
         } else {
-            telegram.sendDocument(chatId, file, caption);
+            return telegram.sendDocument(chatId, file, caption);
         }
     }
 
@@ -124,5 +129,14 @@ public class MediaDeliveryService {
         return name.endsWith(".mp3") || name.endsWith(".m4a");
     }
 
-    public record DeliveryResult(List<Path> files, long totalBytes) {}
+    public record DeliveryResult(List<Path> files, long totalBytes, List<TelegramFileReference> references) {
+        public DeliveryResult {
+            files = List.copyOf(files);
+            references = List.copyOf(references);
+        }
+
+        public java.util.Optional<TelegramFileReference> singleReference() {
+            return references.size() == 1 ? java.util.Optional.of(references.get(0)) : java.util.Optional.empty();
+        }
+    }
 }

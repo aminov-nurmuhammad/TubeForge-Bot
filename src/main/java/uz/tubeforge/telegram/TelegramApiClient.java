@@ -105,8 +105,17 @@ public class TelegramApiClient {
                 Map.of("supports_streaming", Boolean.toString(supportsStreaming)));
     }
 
+    public TgMessage sendVideo(long chatId, String fileId, String caption, boolean supportsStreaming) {
+        return sendFileId("sendVideo", "video", chatId, fileId, caption,
+                Map.of("supports_streaming", supportsStreaming));
+    }
+
     public TgMessage sendPhoto(long chatId, Path file, String caption) {
         return upload("sendPhoto", "photo", chatId, file, caption, Map.of());
+    }
+
+    public TgMessage sendPhoto(long chatId, String fileId, String caption) {
+        return sendFileId("sendPhoto", "photo", chatId, fileId, caption, Map.of());
     }
 
     public TgMessage sendAudio(long chatId, Path file, String caption, String title, String performer) {
@@ -114,8 +123,24 @@ public class TelegramApiClient {
                 Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)));
     }
 
+    public TgMessage sendAudio(long chatId, String fileId, String caption, String title, String performer) {
+        return sendFileId("sendAudio", "audio", chatId, fileId, caption,
+                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)));
+    }
+
     public TgMessage sendDocument(long chatId, Path file, String caption) {
         return upload("sendDocument", "document", chatId, file, caption, Map.of());
+    }
+
+    public TgMessage sendDocument(long chatId, String fileId, String caption) {
+        return sendFileId("sendDocument", "document", chatId, fileId, caption, Map.of());
+    }
+
+    public List<TgMessage> sendLongMessage(long chatId, String text) {
+        if (text == null || text.isBlank()) return List.of();
+        List<TgMessage> sent = new java.util.ArrayList<>();
+        for (String part : splitText(text, 3900)) sent.add(sendMessage(chatId, part, null));
+        return List.copyOf(sent);
     }
 
     public void setCommands() {
@@ -154,6 +179,17 @@ public class TelegramApiClient {
         return objectMapper.convertValue(requireResult(response), TgMessage.class);
     }
 
+    private TgMessage sendFileId(String method, String field, long chatId, String fileId, String caption,
+                                 Map<String, ?> extras) {
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("chat_id", chatId);
+        body.put(field, fileId);
+        body.put("caption", caption == null ? "" : caption);
+        body.put("parse_mode", "HTML");
+        body.putAll(extras);
+        return objectMapper.convertValue(postJson(method, body, Duration.ofSeconds(60)), TgMessage.class);
+    }
+
     private JsonNode postJson(String method, Object body, Duration timeout) {
         JsonNode response = webClient.post()
                 .uri("/" + method)
@@ -187,5 +223,19 @@ public class TelegramApiClient {
         if (value == null) return "";
         String clean = value.strip();
         return clean.length() <= 64 ? clean : clean.substring(0, 64);
+    }
+
+    private List<String> splitText(String text, int limit) {
+        List<String> parts = new java.util.ArrayList<>();
+        String remaining = text.strip();
+        while (remaining.length() > limit) {
+            int cut = remaining.lastIndexOf('\n', limit);
+            if (cut < limit / 2) cut = remaining.lastIndexOf(' ', limit);
+            if (cut < limit / 2) cut = limit;
+            parts.add(remaining.substring(0, cut).strip());
+            remaining = remaining.substring(cut).strip();
+        }
+        if (!remaining.isBlank()) parts.add(remaining);
+        return parts;
     }
 }

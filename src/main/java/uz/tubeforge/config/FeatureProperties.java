@@ -11,6 +11,6 @@ public record FeatureProperties(
         boolean transcripts,
         boolean clips,
         boolean playlists,
-        boolean aiComingSoon
+        boolean aiStudio
 ) {
 }

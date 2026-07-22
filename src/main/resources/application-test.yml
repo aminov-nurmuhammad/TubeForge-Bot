@@ -34,10 +34,22 @@ tubeforge:
     max-playlist-items: 5
     max-concurrent-jobs: 1
     max-concurrent-inspections: 1
+    max-queued-jobs: 20
+    max-queued-inspections: 20
     concurrent-fragments: 1
     extractor-retries: 1
     cache-retention: PT1H
     progress-update-interval: PT1S
+  cache:
+    enabled: true
+    artifact-retention: PT24H
+    insight-retention: PT24H
+  ai:
+    provider: local
+    base-url: http://localhost:11434
+    model: test-model
+    timeout: PT5S
+    max-transcript-characters: 10000
   access:
     mode: PUBLIC
     admin-user-ids:
@@ -52,4 +64,4 @@ tubeforge:
     transcripts: true
     clips: true
     playlists: true
-    ai-coming-soon: true
+    ai-studio: true

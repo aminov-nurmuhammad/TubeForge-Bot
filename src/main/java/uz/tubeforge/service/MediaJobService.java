@@ -22,6 +22,9 @@ import uz.tubeforge.telegram.TelegramApiClient;
 import uz.tubeforge.telegram.TelegramApiException;
 import uz.tubeforge.util.SrtTextExtractor;
 import uz.tubeforge.util.FilenameSanitizer;
+import uz.tubeforge.ai.AiInsightResult;
+import uz.tubeforge.ai.AiStudioService;
+import uz.tubeforge.ai.InsightType;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +34,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,16 +58,24 @@ public class MediaJobService {
     private final MediaProperties properties;
     private final TelegramProperties telegramProperties;
     private final FeatureProperties featureProperties;
+    private final ArtifactCacheService artifactCache;
+    private final PerformanceMetrics metrics;
+    private final AiStudioService aiStudio;
+    private final AiInsightCacheService insightCache;
     private final TaskExecutor executor;
     private final Clock clock;
     private final Set<String> cancellationRequested = ConcurrentHashMap.newKeySet();
     private final Map<String, Instant> lastProgressUpdate = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<MediaArtifact>> inFlightArtifacts = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<AiInsight>> inFlightInsights = new ConcurrentHashMap<>();
 
     public MediaJobService(DownloadJobRepository jobs, MediaRequestService requests, UserService users,
                            AccessService access, YtDlpCommandFactory commands, ManagedProcessRunner runner,
                            StorageService storage, MediaDeliveryService delivery, TelegramApiClient telegram,
                            BotMessages messages, KeyboardFactory keyboards, MediaProperties properties,
                            TelegramProperties telegramProperties, FeatureProperties featureProperties,
+                           ArtifactCacheService artifactCache, PerformanceMetrics metrics,
+                           AiStudioService aiStudio, AiInsightCacheService insightCache,
                            @Qualifier("mediaJobExecutor") TaskExecutor executor, Clock clock) {
         this.jobs = jobs;
         this.requests = requests;
@@ -78,6 +91,10 @@ public class MediaJobService {
         this.properties = properties;
         this.telegramProperties = telegramProperties;
         this.featureProperties = featureProperties;
+        this.artifactCache = artifactCache;
+        this.metrics = metrics;
+        this.aiStudio = aiStudio;
+        this.insightCache = insightCache;
         this.executor = executor;
         this.clock = clock;
     }
@@ -92,10 +109,13 @@ public class MediaJobService {
                     throw new MediaProcessingException("JOB_ALREADY_ACTIVE",
                             "This exact job is already queued or running. Use /jobs to check it.");
                 });
-        if (!access.canCreateJob(userId)) {
+        MediaRequest request = requests.requireOwned(requestId, userId);
+        AppUser user = users.require(userId);
+        boolean instantAvailable = artifactCache.cacheable(type)
+                && artifactCache.isAvailable(artifactCache.key(request, type, storedFormat, user));
+        if (!instantAvailable && !access.canCreateJob(userId)) {
             throw new MediaProcessingException("DAILY_LIMIT", "You have reached your processing limit for the last 24 hours.");
         }
-        MediaRequest request = requests.requireOwned(requestId, userId);
         if (storedFormat.length() > 64) throw new IllegalArgumentException("Format selection is too long");
         DownloadJob job = DownloadJob.queued(request, type, storedFormat, clock.instant());
         jobs.save(job);
@@ -163,13 +183,58 @@ public class MediaJobService {
     private void execute(String jobId) {
         DownloadJob job = jobs.findById(jobId).orElse(null);
         if (job == null || cancellationRequested.contains(jobId) || job.getStatus() == JobStatus.CANCELLED) return;
+        String flightKey = null;
+        CompletableFuture<MediaArtifact> ownedFlight = null;
+        String insightFlightKey = null;
+        CompletableFuture<AiInsight> ownedInsightFlight = null;
         try {
             job.start(clock.instant());
             jobs.save(job);
-            safeProgress(job, 1, "Starting media tools");
+            safeProgress(job, 1, "Checking the instant cache");
 
             MediaRequest request = requests.requireOwned(job.getRequestId(), job.getTelegramUserId());
             MediaInfo info = requests.info(request);
+            AppUser user = users.require(job.getTelegramUserId());
+
+            InsightType insightType = insightType(job.getJobType());
+            if (insightType != null) {
+                insightFlightKey = insightCache.key(request, job, user, insightType);
+                Optional<AiInsight> cachedInsight = insightCache.find(insightFlightKey);
+                if (cachedInsight.isPresent()) {
+                    deliverInsight(job, cachedInsight.orElseThrow().getContent(),
+                            cachedInsight.orElseThrow().getProvider(), true);
+                    return;
+                }
+                CompletableFuture<AiInsight> candidate = new CompletableFuture<>();
+                CompletableFuture<AiInsight> existing = inFlightInsights.putIfAbsent(insightFlightKey, candidate);
+                if (existing != null) {
+                    metrics.coalescedJob();
+                    safeProgress(job, 3, "Reusing identical AI work already in progress");
+                    AiInsight shared = existing.get(Math.max(1, properties.processTimeout().toSeconds()), TimeUnit.SECONDS);
+                    deliverInsight(job, shared.getContent(), shared.getProvider(), true);
+                    return;
+                }
+                ownedInsightFlight = candidate;
+            }
+
+            if (artifactCache.cacheable(job.getJobType())) {
+                flightKey = artifactCache.key(request, job, user);
+                Optional<MediaArtifact> cached = artifactCache.find(flightKey);
+                if (cached.isPresent() && deliverCached(job, cached.orElseThrow(), info)) return;
+
+                CompletableFuture<MediaArtifact> candidate = new CompletableFuture<>();
+                CompletableFuture<MediaArtifact> existing = inFlightArtifacts.putIfAbsent(flightKey, candidate);
+                if (existing != null) {
+                    metrics.coalescedJob();
+                    safeProgress(job, 3, "Reusing an identical job already in progress");
+                    MediaArtifact shared = existing.get(Math.max(1, properties.processTimeout().toSeconds()), TimeUnit.SECONDS);
+                    if (shared != null && deliverCached(job, shared, info)) return;
+                } else {
+                    ownedFlight = candidate;
+                }
+            }
+
+            safeProgress(job, 4, "Starting media tools");
             JobSpec spec = decodeFormat(job.getFormatCode());
             Path directory = storage.jobDirectory(jobId);
             List<String> command = commands.download(job.getJobType(), spec.format(), request.getSourceUrl(),
@@ -187,21 +252,78 @@ public class MediaJobService {
             jobs.save(job);
             safeEdit(job, "📤 <b>Uploading your result…</b>\n\nProcessing is complete.", null);
 
-            DeliverySummary delivered = prepareAndDeliver(job, directory, info, users.require(job.getTelegramUserId()));
+            DeliverySummary delivered = prepareAndDeliver(job, directory, info, user);
+            if (ownedInsightFlight != null && delivered.aiInsight() != null) {
+                ownedInsightFlight.complete(delivered.aiInsight());
+            }
+            if (delivered.aiInsight() != null) return;
+            if (ownedFlight != null && flightKey != null && delivered.cacheDelivery() != null) {
+                Optional<MediaArtifact> stored = artifactCache.store(flightKey, request, job, delivered.cacheDelivery());
+                ownedFlight.complete(stored.orElse(null));
+            } else if (ownedFlight != null) {
+                ownedFlight.complete(null);
+            }
             job.complete(delivered.name(), delivered.totalBytes(), clock.instant());
             jobs.save(job);
             safeEdit(job, "✅ <b>Completed</b>\n\nYour file has been delivered successfully.", null);
         } catch (MediaProcessingException e) {
+            completeFlightExceptionally(ownedFlight, e);
+            completeInsightFlightExceptionally(ownedInsightFlight, e);
             fail(jobId, e.getCode(), e.getUserMessage());
         } catch (TelegramApiException e) {
+            completeFlightExceptionally(ownedFlight, e);
+            completeInsightFlightExceptionally(ownedInsightFlight, e);
             fail(jobId, "TELEGRAM_UPLOAD_FAILED", "Telegram could not accept the generated file. " + safeError(e.getMessage()));
         } catch (Exception e) {
+            completeFlightExceptionally(ownedFlight, e);
+            completeInsightFlightExceptionally(ownedInsightFlight, e);
             log.error("Unexpected media job failure {}", jobId, e);
             fail(jobId, "INTERNAL_ERROR", "An unexpected error occurred while processing this media.");
         } finally {
+            if (ownedFlight != null && !ownedFlight.isDone()) {
+                ownedFlight.completeExceptionally(new MediaProcessingException("JOB_INTERRUPTED",
+                        "The shared media job ended before a reusable result was created."));
+            }
+            if (ownedInsightFlight != null && !ownedInsightFlight.isDone()) {
+                ownedInsightFlight.completeExceptionally(new MediaProcessingException("AI_JOB_INTERRUPTED",
+                        "The shared AI job ended before a reusable result was created."));
+            }
+            if (flightKey != null && ownedFlight != null) inFlightArtifacts.remove(flightKey, ownedFlight);
+            if (insightFlightKey != null && ownedInsightFlight != null) {
+                inFlightInsights.remove(insightFlightKey, ownedInsightFlight);
+            }
             lastProgressUpdate.remove(jobId);
             cancellationRequested.remove(jobId);
         }
+    }
+
+    private boolean deliverCached(DownloadJob job, MediaArtifact artifact, MediaInfo info) {
+        try {
+            job.delivering();
+            job.progress(100);
+            jobs.save(job);
+            safeEdit(job, "⚡ <b>Instant cache hit</b>\n\nSending the already prepared Telegram file…", null);
+            artifactCache.deliver(artifact, job.getChatId(), info);
+            job.complete(artifact.getResultFileName() == null ? "cached media" : artifact.getResultFileName(),
+                    artifact.getSizeBytes() == null ? 0 : artifact.getSizeBytes(), clock.instant());
+            jobs.save(job);
+            safeEdit(job, "⚡ <b>Delivered instantly</b>\n\nNo YouTube download or conversion was needed.", null);
+            return true;
+        } catch (TelegramApiException e) {
+            log.info("Cached Telegram file {} became invalid; rebuilding it", artifact.getCacheKey());
+            artifactCache.invalidate(artifact.getCacheKey());
+            job.start(clock.instant());
+            jobs.save(job);
+            return false;
+        }
+    }
+
+    private void completeFlightExceptionally(CompletableFuture<MediaArtifact> future, Throwable error) {
+        if (future != null && !future.isDone()) future.completeExceptionally(error);
+    }
+
+    private void completeInsightFlightExceptionally(CompletableFuture<AiInsight> future, Throwable error) {
+        if (future != null && !future.isDone()) future.completeExceptionally(error);
     }
 
     private DeliverySummary prepareAndDeliver(DownloadJob job, Path directory, MediaInfo info, AppUser user) {
@@ -214,7 +336,7 @@ public class MediaJobService {
             }
             Path zip = storage.zip(directory, images, "TubeForge-thumbnails.zip");
             var result = delivery.deliver(job.getChatId(), zip, JobType.ALL_THUMBNAILS, info, user);
-            return new DeliverySummary(zip.getFileName().toString(), result.totalBytes());
+            return new DeliverySummary(zip.getFileName().toString(), result.totalBytes(), null, null);
         }
         if (job.getJobType() == JobType.TRANSCRIPT) {
             Path subtitle = outputs.stream().filter(path -> extension(path).equals("srt")).findFirst()
@@ -224,9 +346,28 @@ public class MediaJobService {
                 String language = FilenameSanitizer.sanitize(job.getFormatCode().split("@")[0], "unknown");
                 Path transcript = storage.writeText(directory, "TubeForge-transcript-" + language + ".txt", text);
                 var result = delivery.deliver(job.getChatId(), transcript, JobType.TRANSCRIPT, info, user);
-                return new DeliverySummary(transcript.getFileName().toString(), result.totalBytes());
+                return new DeliverySummary(transcript.getFileName().toString(), result.totalBytes(), result, null);
             } catch (IOException e) {
                 throw new MediaProcessingException("TRANSCRIPT_FAILED", "The transcript could not be created.", e);
+            }
+        }
+        InsightType insightType = insightType(job.getJobType());
+        if (insightType != null) {
+            Path subtitle = outputs.stream().filter(path -> extension(path).equals("srt")).findFirst()
+                    .orElseThrow(() -> new MediaProcessingException("NO_SUBTITLES",
+                            "AI Studio needs subtitles, but none were available for this language."));
+            try {
+                String srt = Files.readString(subtitle);
+                AiInsightResult result = aiStudio.generate(insightType, srt, info, user.getLanguage());
+                MediaRequest request = requests.requireOwned(job.getRequestId(), job.getTelegramUserId());
+                String key = insightCache.key(request, job, user, insightType);
+                AiInsight stored = insightCache.store(key, request, job, user, insightType, result);
+                deliverInsight(job, result.content(), result.provider(), false);
+                return new DeliverySummary("AI " + insightType.name().toLowerCase(Locale.ROOT),
+                        result.content().length(), null, stored);
+            } catch (IOException e) {
+                throw new MediaProcessingException("AI_TRANSCRIPT_FAILED",
+                        "AI Studio could not read the subtitle transcript.", e);
             }
         }
         if (job.getJobType() == JobType.PLAYLIST_AUDIO || job.getJobType() == JobType.PLAYLIST_VIDEO) {
@@ -238,11 +379,11 @@ public class MediaJobService {
                 delivered++;
             }
             if (delivered == 0) throw new MediaProcessingException("OUTPUT_MISSING", "No playlist items were created.");
-            return new DeliverySummary(delivered + " playlist items", total);
+            return new DeliverySummary(delivered + " playlist items", total, null, null);
         }
         Path output = selectOutput(outputs, job.getJobType());
         var result = delivery.deliver(job.getChatId(), output, job.getJobType(), info, user);
-        return new DeliverySummary(output.getFileName().toString(), result.totalBytes());
+        return new DeliverySummary(output.getFileName().toString(), result.totalBytes(), result, null);
     }
 
     private Path selectOutput(List<Path> outputs, JobType type) {
@@ -251,6 +392,7 @@ public class MediaJobService {
                     case SUBTITLES -> extension(path).equals("srt");
                     case AUDIO, CLIP_AUDIO -> isAudio(path);
                     case VIDEO, CLIP_VIDEO -> isVideo(path);
+                    case AI_SUMMARY, AI_CHAPTERS, AI_STUDY_NOTES -> extension(path).equals("srt");
                     default -> true;
                 }).findFirst()
                 .orElseThrow(() -> new MediaProcessingException("OUTPUT_MISSING", "The requested output format was not created."));
@@ -361,6 +503,9 @@ public class MediaJobService {
             case TRANSCRIPT -> "Creating transcript";
             case CLIP_VIDEO, CLIP_AUDIO -> "Creating clip";
             case PLAYLIST_VIDEO, PLAYLIST_AUDIO -> "Processing playlist";
+            case AI_SUMMARY -> "Creating AI summary";
+            case AI_CHAPTERS -> "Finding chapters and key moments";
+            case AI_STUDY_NOTES -> "Creating study notes";
         };
     }
 
@@ -377,6 +522,7 @@ public class MediaJobService {
             case TRANSCRIPT -> featureProperties.transcripts();
             case CLIP_VIDEO, CLIP_AUDIO -> featureProperties.clips();
             case PLAYLIST_VIDEO, PLAYLIST_AUDIO -> featureProperties.playlists();
+            case AI_SUMMARY, AI_CHAPTERS, AI_STUDY_NOTES -> featureProperties.aiStudio();
         };
         if (!enabled) {
             throw new MediaProcessingException("FEATURE_DISABLED", "This tool is currently disabled by the bot owner.");
@@ -400,6 +546,30 @@ public class MediaJobService {
         return value.length() > 1000 ? value.substring(0, 1000) : value;
     }
 
+    private InsightType insightType(JobType type) {
+        return switch (type) {
+            case AI_SUMMARY -> InsightType.SUMMARY;
+            case AI_CHAPTERS -> InsightType.CHAPTERS;
+            case AI_STUDY_NOTES -> InsightType.STUDY_NOTES;
+            default -> null;
+        };
+    }
+
+    private void deliverInsight(DownloadJob job, String content, String provider, boolean cached) {
+        job.delivering();
+        job.progress(100);
+        jobs.save(job);
+        String text = "✨ <b>TubeForge AI Studio</b>\n"
+                + (cached ? "⚡ Instant AI cache\n" : "")
+                + "<i>Engine: " + uz.tubeforge.util.Html.escape(provider) + "</i>\n\n"
+                + uz.tubeforge.util.Html.escape(content);
+        telegram.sendLongMessage(job.getChatId(), text);
+        job.complete("AI insight", content.length(), clock.instant());
+        jobs.save(job);
+        safeEdit(job, cached ? "⚡ <b>AI result delivered instantly</b>" : "✅ <b>AI result ready</b>", null);
+    }
+
     private record JobSpec(String format, ClipRange range) {}
-    private record DeliverySummary(String name, long totalBytes) {}
+    private record DeliverySummary(String name, long totalBytes, MediaDeliveryService.DeliveryResult cacheDelivery,
+                                   AiInsight aiInsight) {}
 }

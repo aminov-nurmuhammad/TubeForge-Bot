@@ -23,12 +23,12 @@ public class ApplicationConfig {
 
     @Bean("mediaJobExecutor")
     TaskExecutor mediaJobExecutor(MediaProperties properties) {
-        return executor(properties.maxConcurrentJobs(), 100, "media-job-");
+        return executor(properties.maxConcurrentJobs(), properties.maxQueuedJobs(), "media-job-");
     }
 
     @Bean("mediaInspectionExecutor")
     TaskExecutor mediaInspectionExecutor(MediaProperties properties) {
-        return executor(properties.maxConcurrentInspections(), 200, "media-inspect-");
+        return executor(properties.maxConcurrentInspections(), properties.maxQueuedInspections(), "media-inspect-");
     }
 
     private TaskExecutor executor(int size, int queueCapacity, String prefix) {

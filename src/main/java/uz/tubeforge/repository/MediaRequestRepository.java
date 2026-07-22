@@ -14,4 +14,7 @@ public interface MediaRequestRepository extends JpaRepository<MediaRequest, Stri
 
     Optional<MediaRequest> findFirstByTelegramUserIdAndChatIdAndSourceUrlAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
             long userId, long chatId, String sourceUrl, RequestStatus status, Instant expiresAt);
+
+    Optional<MediaRequest> findFirstBySourceUrlHashAndStatusAndMetadataInspectedAtAfterOrderByCreatedAtDesc(
+            String sourceUrlHash, RequestStatus status, Instant inspectedAfter);
 }

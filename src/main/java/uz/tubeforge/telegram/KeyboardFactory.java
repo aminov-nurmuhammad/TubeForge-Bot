@@ -30,7 +30,7 @@ public class KeyboardFactory {
         return InlineKeyboard.of(List.of(List.of(callback("✅ I agree — continue", of("accept")))));
     }
 
-    public InlineKeyboard preview(String requestId, MediaInfo info) {
+    public InlineKeyboard preview(String requestId, MediaInfo info, AppUser user) {
         List<List<InlineButton>> rows = new ArrayList<>();
         if (info.sourceType() == uz.tubeforge.domain.SourceType.PLAYLIST) {
             if (features.playlists()) {
@@ -40,29 +40,27 @@ public class KeyboardFactory {
         } else {
             if (features.videoDownload() || features.audioDownload()) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.videoDownload()) row.add(callback("🎥 Video", of("video", requestId)));
-                if (features.audioDownload()) row.add(callback("🎵 Audio", of("audio", requestId)));
+                if (features.videoDownload()) row.add(callback("⚡ " + user.getDefaultVideoQuality() + "p video",
+                        of("qv", requestId, user.getDefaultVideoQuality())));
+                if (features.audioDownload()) row.add(callback("⚡ " + user.getDefaultAudioFormat() + " audio",
+                        of("qa", requestId, user.getDefaultAudioFormat().toLowerCase(java.util.Locale.ROOT))));
                 rows.add(row);
             }
-            if (features.thumbnails() || features.subtitles()) {
+            if (features.videoDownload() || features.audioDownload()) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.thumbnails()) row.add(callback("🖼 Thumbnail", of("thumb", requestId)));
-                if (features.subtitles()) row.add(callback("📝 Subtitles", of("subs", requestId)));
+                if (features.videoDownload()) row.add(callback("🎬 Video options", of("video", requestId)));
+                if (features.audioDownload()) row.add(callback("🎵 Audio options", of("audio", requestId)));
                 rows.add(row);
             }
-            if (features.transcripts() || features.clips()) {
+            if (features.aiStudio() || features.thumbnails() || features.subtitles()
+                    || features.transcripts() || features.clips()) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.transcripts()) row.add(callback("📄 Transcript", of("trans", requestId)));
-                if (features.clips()) row.add(callback("✂️ Create clip", of("clip", requestId)));
+                if (features.aiStudio()) row.add(callback("✨ AI Studio", of("ai", requestId)));
+                row.add(callback("🧰 More tools", of("tools", requestId)));
                 rows.add(row);
             }
         }
-        if (features.aiComingSoon()) {
-            rows.add(List.of(callback("✨ AI Studio", of("ai", requestId)),
-                    callback("ℹ️ More info", of("info", requestId))));
-        } else {
-            rows.add(List.of(callback("ℹ️ More info", of("info", requestId))));
-        }
+        rows.add(List.of(callback("ℹ️ Media info", of("info", requestId))));
         if (info.webpageUrl() != null && info.webpageUrl().startsWith("https://")) {
             rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl())));
         }
@@ -71,9 +69,14 @@ public class KeyboardFactory {
     }
 
     public InlineKeyboard videoFormats(String requestId, MediaInfo info) {
+        return videoFormats(requestId, info, false);
+    }
+
+    public InlineKeyboard videoFormats(String requestId, MediaInfo info, boolean expanded) {
         List<List<InlineButton>> rows = new ArrayList<>();
         List<InlineButton> current = new ArrayList<>();
-        for (VideoFormatOption format : info.videoFormats()) {
+        List<VideoFormatOption> formats = expanded ? info.videoFormats() : recommended(info.videoFormats());
+        for (VideoFormatOption format : formats) {
             String size = format.estimatedBytes() > 0 ? " • " + HumanFormat.bytes(format.estimatedBytes()) : "";
             String fps = format.fps() >= 50 ? " • " + format.fps() + "fps" : "";
             current.add(callback(format.height() + "p" + fps + size, of("dlv", requestId, format.height())));
@@ -85,15 +88,54 @@ public class KeyboardFactory {
         if (!current.isEmpty()) rows.add(List.copyOf(current));
         rows.add(List.of(callback("⭐ Best quality", of("dlv", requestId, "best")),
                 callback("📱 Smallest file", of("dlv", requestId, "small"))));
+        if (!expanded && formats.size() < info.videoFormats().size()) {
+            rows.add(List.of(callback("🎛 All available qualities", of("allv", requestId))));
+        }
         rows.add(List.of(callback("🔙 Back", of("back", requestId))));
         return InlineKeyboard.of(rows);
     }
 
     public InlineKeyboard audioFormats(String requestId) {
         return InlineKeyboard.of(List.of(
+                List.of(callback("⚡ MP3 • 192 kbps", of("dla", requestId, "mp3", 192))),
+                List.of(callback("⚡ M4A • 192 kbps", of("dla", requestId, "m4a", 192))),
+                List.of(callback("🎛 More formats and qualities", of("alla", requestId))),
+                List.of(callback("🔙 Back", of("back", requestId)))
+        ));
+    }
+
+    public InlineKeyboard allAudioFormats(String requestId) {
+        return InlineKeyboard.of(List.of(
                 List.of(callback("🎧 MP3", of("audfmt", requestId, "mp3")), callback("🎼 M4A", of("audfmt", requestId, "m4a"))),
                 List.of(callback("🔊 WAV • lossless", of("audfmt", requestId, "wav")), callback("🎙 OGG", of("audfmt", requestId, "ogg"))),
                 List.of(callback("💿 FLAC • lossless", of("audfmt", requestId, "flac"))),
+                List.of(callback("🔙 Quick audio", of("audio", requestId)))
+        ));
+    }
+
+    public InlineKeyboard toolsMenu(String requestId) {
+        List<List<InlineButton>> rows = new ArrayList<>();
+        if (features.thumbnails() || features.subtitles()) {
+            List<InlineButton> row = new ArrayList<>();
+            if (features.thumbnails()) row.add(callback("🖼 Thumbnails", of("thumb", requestId)));
+            if (features.subtitles()) row.add(callback("📝 Subtitles", of("subs", requestId)));
+            rows.add(row);
+        }
+        if (features.transcripts() || features.clips()) {
+            List<InlineButton> row = new ArrayList<>();
+            if (features.transcripts()) row.add(callback("📄 Transcript", of("trans", requestId)));
+            if (features.clips()) row.add(callback("✂️ Clip Studio", of("clip", requestId)));
+            rows.add(row);
+        }
+        rows.add(List.of(callback("🔙 Back", of("back", requestId))));
+        return InlineKeyboard.of(rows);
+    }
+
+    public InlineKeyboard aiStudio(String requestId) {
+        return InlineKeyboard.of(List.of(
+                List.of(callback("🧠 Smart summary", of("aisel", requestId, "summary"))),
+                List.of(callback("⏱ Chapters & key moments", of("aisel", requestId, "chapters"))),
+                List.of(callback("📚 Study notes", of("aisel", requestId, "notes"))),
                 List.of(callback("🔙 Back", of("back", requestId)))
         ));
     }
@@ -179,5 +221,15 @@ public class KeyboardFactory {
 
     public InlineKeyboard back(String requestId) {
         return InlineKeyboard.of(List.of(List.of(callback("🔙 Back", of("back", requestId)))));
+    }
+
+    private List<VideoFormatOption> recommended(List<VideoFormatOption> formats) {
+        List<Integer> preferred = List.of(1080, 720, 480, 360);
+        List<VideoFormatOption> result = new ArrayList<>();
+        for (int height : preferred) {
+            formats.stream().filter(value -> value.height() == height).findFirst().ifPresent(result::add);
+        }
+        if (result.isEmpty()) result.addAll(formats.stream().limit(4).toList());
+        return List.copyOf(result);
     }
 }

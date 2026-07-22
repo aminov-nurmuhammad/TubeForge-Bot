@@ -54,7 +54,7 @@ public class BotMessages {
                 + extra
                 + (info.viewCount() > 0 ? "\n👁 <b>Views:</b> " + HumanFormat.number(info.viewCount()) : "")
                 + "\n🔗 <b>Type:</b> " + type
-                + "\n\nChoose what you want to create:";
+                + "\n\nChoose a one-tap result or open advanced tools:";
     }
 
     public String settings(AppUser user) {
@@ -74,7 +74,7 @@ public class BotMessages {
                 + "\n\nYou can cancel while processing.";
     }
 
-    public String comingSoon() {
-        return "✨ <b>AI Studio is being prepared</b>\n\nSmart summaries, questions, chapters, key moments and learning notes will arrive in a future update. The rest of TubeForge is fully local and free.";
+    public String aiStudio() {
+        return "✨ <b>TubeForge AI Studio</b>\n\nCreate a smart summary, timestamped chapters, key moments or study notes from the video's subtitles.\n\nThe built-in local engine is free and always available. Owners can optionally connect Ollama for deeper LLM analysis.";
     }
 }

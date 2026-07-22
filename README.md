@@ -1,8 +1,8 @@
-# TubeForge Bot
+# TubeForge Bot 3
 
 TubeForge is a complete, self-hosted Telegram media toolkit built with Java 17 and Spring Boot 4. Send a supported YouTube link and use inline buttons to create an authorized video, audio track, thumbnail bundle, subtitle file, clean transcript, precise clip, or playlist export.
 
-The application uses only free, open-source components. It does not require an AI API, payment provider, domain, webhook, or subscription. AI Studio is deliberately displayed as a polished **Coming soon** screen.
+The application uses only free, open-source components. It does not require an AI API, payment provider, domain, webhook, or subscription. AI Studio includes a built-in local insight engine and can optionally use a local Ollama model.
 
 > Use TubeForge only for media you own, public-domain or Creative Commons material, and other content you are authorized to download or process. Do not use it to bypass access controls or infringe copyright.
 
@@ -21,6 +21,11 @@ The application uses only free, open-source components. It does not require an A
 - Persistent link history, job history and user preferences
 - English, Russian and Uzbek interface selection
 - Live progress bars, speed/ETA display and cancellable background jobs
+- One-tap default video/audio actions and compact recommended quality menus
+- Global Telegram `file_id` cache for near-instant repeat delivery across users
+- Single-flight coordination: one download serves every simultaneous identical request
+- Free local AI summaries, timestamped chapters, key moments and study notes
+- Optional Ollama models with automatic local fallback and persistent AI-result caching
 - Separate inspection and download pools, metadata reuse and duplicate-job protection
 - Verified video+audio streams, Telegram-compatible H.264/AAC output and fast-start remuxing
 - Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
@@ -120,16 +125,13 @@ DATABASE_PASSWORD=your_local_password
 ```mermaid
 flowchart TD
     A["Send YouTube link"] --> B["Inspect metadata"]
-    B --> C["Inline tool menu"]
-    C --> D["Video or audio"]
-    C --> E["Thumbnail or subtitles"]
-    C --> F["Transcript or clip"]
-    D --> G["Background job"]
-    E --> G
-    F --> G
-    G --> H["Progress and cancel"]
-    H --> I["Compress or split if needed"]
-    I --> J["Deliver in Telegram"]
+    B --> C{"Cached result?"}
+    C -->|Yes| D["Instant Telegram file_id delivery"]
+    C -->|No| E["One-tap or advanced tools"]
+    E --> F["Single shared background job"]
+    F --> G["Download / AI / convert"]
+    G --> H["Store reusable result"]
+    H --> I["Deliver in Telegram"]
 ```
 
 ## Telegram commands
@@ -157,16 +159,48 @@ flowchart TD
 | `DAILY_JOB_LIMIT` | `20` | Jobs per non-admin user in 24 hours |
 | `MAX_CONCURRENT_JOBS` | `2` | Media processes running simultaneously |
 | `MAX_CONCURRENT_INSPECTIONS` | `4` | Links that can be inspected simultaneously |
+| `MAX_QUEUED_JOBS` | `500` | Bounded media queue capacity |
+| `MAX_QUEUED_INSPECTIONS` | `1000` | Bounded inspection queue capacity |
 | `MAX_VIDEO_DURATION_SECONDS` | `10800` | Maximum non-playlist duration |
 | `MAX_PLAYLIST_ITEMS` | `20` | Maximum public-playlist items |
 | `TELEGRAM_MAX_UPLOAD_BYTES` | `50000000` | Upload target for the standard Bot API |
 | `MEDIA_CACHE_RETENTION` | `PT24H` | Local result retention before cleanup |
+| `ARTIFACT_CACHE_RETENTION` | `PT720H` | Telegram `file_id` cache retention |
+| `AI_PROVIDER` | `local` | Free built-in engine or `ollama` |
+| `OLLAMA_MODEL` | `qwen3:4b` | Optional local Ollama model |
 | `YOUTUBE_COOKIES_FILE` | empty | Optional Netscape cookies file for verification/rate-limit responses |
 | `YT_DLP_CONCURRENT_FRAGMENTS` | `4` | Parallel HLS/DASH fragment downloads |
 | `YT_DLP_RETRIES` | `5` | Extractor and fragment retry count |
 | `FEATURE_*` | `true` | Independently enable or disable tools |
 
 Every supported setting is documented in [`.env.example`](.env.example).
+
+## Instant delivery and realistic speed
+
+For a format the bot has already delivered, TubeForge stores Telegram's reusable `file_id`. The next user requesting the same video, format and delivery mode receives Telegram's existing server-side file: no YouTube request, no FFmpeg process and no binary re-upload. This is the path that can feel nearly instantaneous.
+
+When many users request the same uncached result simultaneously, single-flight coordination launches exactly one download and conversion. Every waiter receives that result after the first upload. Metadata inspection is also cached globally across users.
+
+The first uncached request cannot be guaranteed in milliseconds: its minimum time is controlled by YouTube response time, media size, server bandwidth and Telegram upload speed. TubeForge minimizes that path by preferring progressive MP4 with embedded audio when available, downloading fragments concurrently, stream-copying compatible codecs and transcoding only when required.
+
+## AI Studio
+
+AI Studio works immediately with no cloud key and no payment:
+
+- Smart summary
+- Timestamped chapters and key moments
+- Study notes and keywords
+- Persistent reuse of identical AI results
+
+The default `AI_PROVIDER=local` uses deterministic language processing inside the Java application. For deeper LLM output, install Ollama on the host and configure:
+
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen3:4b
+```
+
+If Ollama is unavailable or times out, TubeForge automatically falls back to the free built-in engine. AI features require subtitles in at least one language and never invent a transcript from unavailable audio.
 
 ## Make the bot private
 
@@ -204,6 +238,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 - Application status: `http://localhost:8080/`
 - Spring health: `http://localhost:8080/actuator/health`
 - Application information: `http://localhost:8080/actuator/info`
+- Performance counters: `http://localhost:8080/actuator/metrics`
 - Bot logs: `docker compose logs -f bot`
 - Database backup: back up the `postgres_data` Docker volume
 - Temporary media: stored in `media_storage` and removed after the retention period
@@ -217,7 +252,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-2.0.0.jar
+target/tubeforge-bot-3.0.0.jar
 ```
 
 ## Architecture
@@ -225,11 +260,13 @@ target/tubeforge-bot-2.0.0.jar
 ```mermaid
 flowchart LR
     TG["Telegram Bot API"] --> APP["Spring Boot"]
-    APP --> DB["H2 / PostgreSQL"]
+    APP --> DB["Metadata, file_id and AI cache"]
     APP --> IQ["Fast inspection pool"]
     APP --> Q["Bounded media queue"]
     IQ --> YTM["yt-dlp metadata"]
-    Q --> YTD["yt-dlp downloads"]
+    Q --> CACHE{"Artifact cached?"}
+    CACHE -->|No| YTD["yt-dlp downloads"]
+    CACHE -->|Yes| TG
     Q --> FF["FFmpeg / FFprobe"]
     Q --> FS["Temporary storage"]
     FS --> TG
@@ -237,7 +274,7 @@ flowchart LR
 
 The Telegram integration is implemented directly against the official HTTP Bot API. External process arguments are passed as arrays through Java `ProcessBuilder`; Telegram users cannot insert shell commands or arbitrary yt-dlp options. YouTube URLs are accepted only from a strict host allowlist.
 
-See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), [Troubleshooting](docs/TROUBLESHOOTING.md), [Testing](docs/TESTING.md), and the [Changelog](CHANGELOG.md) for additional details.
+See [Architecture](docs/ARCHITECTURE.md), [Performance](docs/PERFORMANCE.md), [Deployment](docs/DEPLOYMENT.md), [Troubleshooting](docs/TROUBLESHOOTING.md), [Testing](docs/TESTING.md), and the [Changelog](CHANGELOG.md) for additional details.
 
 ## Known platform constraints
 
@@ -246,7 +283,7 @@ See [Architecture](docs/ARCHITECTURE.md), [Deployment](docs/DEPLOYMENT.md), [Tro
 - Private, paid, members-only, DRM-protected and access-controlled media is intentionally unsupported.
 - Region-restricted or age-verification media may be unavailable from the deployment server.
 - Playlist downloads can consume significant disk, CPU and upload bandwidth; limits are intentionally conservative.
-- AI Studio is visible but intentionally non-operational until a genuinely free local model workflow is added.
+- Local AI quality is intentionally concise; enable an Ollama model when deeper reasoning is required.
 
 ## License
 

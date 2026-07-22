@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.0
+
+- Added a persistent global Telegram `file_id` cache: repeated media/format requests skip YouTube, FFmpeg and binary upload.
+- Added single-flight coordination for identical inspections and downloads so concurrent users share one operation.
+- Made metadata reuse global across users while preserving per-user request ownership.
+- Added TubeForge AI Studio with free built-in smart summaries, timestamped chapters and study notes.
+- Added optional Ollama integration with automatic fallback to the built-in local insight engine.
+- Added persistent AI insight caching by video, mode, transcript language, output language and model.
+- Rebuilt the inline interface around one-tap defaults, compact recommended qualities and a separate advanced-tools area.
+- Prefer progressive MP4 formats with embedded audio when available to avoid unnecessary merge work.
+- Added configurable bounded queues, cache/AI Micrometer metrics and cache statistics to the admin panel.
+- Added database migrations and retention cleanup for media artifacts and AI results.
+
 ## 2.0.0
 
 - Rebuilt yt-dlp command generation with explicit FFmpeg discovery, retries, fragment concurrency, proxy and cookies-file support.
