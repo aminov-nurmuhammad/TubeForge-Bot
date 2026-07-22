@@ -15,6 +15,7 @@ import uz.tubeforge.repository.MediaRequestRepository;
 import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
+import uz.tubeforge.util.Sha256;
 
 @Service
 public class MediaRequestService {
@@ -22,13 +23,15 @@ public class MediaRequestService {
     private final MediaProperties properties;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final PerformanceMetrics metrics;
 
     public MediaRequestService(MediaRequestRepository repository, MediaProperties properties,
-                               ObjectMapper objectMapper, Clock clock) {
+                               ObjectMapper objectMapper, Clock clock, PerformanceMetrics metrics) {
         this.repository = repository;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -43,7 +46,7 @@ public class MediaRequestService {
         MediaRequest request = requireOwnedOrSystem(id);
         try {
             request.ready(info.id(), info.title(), info.channel(), info.durationSeconds(), info.thumbnailUrl(),
-                    objectMapper.writeValueAsString(info), info.sourceType());
+                    objectMapper.writeValueAsString(info), info.sourceType(), clock.instant());
         } catch (JacksonException e) {
             throw new IllegalStateException("Could not store media information", e);
         }
@@ -88,10 +91,18 @@ public class MediaRequestService {
         return repository.findByTelegramUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, limit));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Optional<MediaRequest> reusable(long userId, long chatId, ParsedYouTubeUrl url) {
-        return repository.findFirstByTelegramUserIdAndChatIdAndSourceUrlAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
-                userId, chatId, url.normalizedUrl(), uz.tubeforge.domain.RequestStatus.READY, clock.instant());
+        Optional<MediaRequest> source = repository.findFirstBySourceUrlHashAndStatusAndMetadataInspectedAtAfterOrderByCreatedAtDesc(
+                Sha256.hex(url.normalizedUrl()), RequestStatus.READY, clock.instant().minus(properties.cacheRetention()));
+        if (source.isEmpty()) {
+            metrics.metadataMiss();
+            return Optional.empty();
+        }
+        MediaRequest copy = MediaRequest.cached(userId, chatId, url.normalizedUrl(), url.sourceType(),
+                source.orElseThrow(), clock.instant(), clock.instant().plus(properties.cacheRetention()));
+        metrics.metadataHit();
+        return Optional.of(repository.save(copy));
     }
 
     private MediaRequest requireOwnedOrSystem(String id) {

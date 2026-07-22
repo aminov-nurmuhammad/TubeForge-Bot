@@ -7,6 +7,7 @@ TubeForge is a modular Spring Boot monolith. It is deliberately simpler to run t
 - `telegram`: Bot API client, polling, update router, inline keyboards and text rendering
 - `media`: URL validation, metadata parsing, safe command construction, process lifecycle, storage and FFmpeg utilities
 - `service`: users, access rules, sessions, media requests, jobs and delivery
+- `ai`: subtitle parsing, deterministic local insights and optional Ollama generation
 - `domain` and `repository`: persistent state managed through JPA
 - `health` and `web`: operational endpoints
 
@@ -26,9 +27,19 @@ stateDiagram-v2
 
 Metadata inspection and media work use separate bounded executors, so a long download cannot freeze new-link previews. The media executor has configurable fixed concurrency and a bounded queue. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
 
+## Cache and request coalescing
+
+TubeForge has three persistent cache levels:
+
+1. Canonical metadata is reused across users by normalized YouTube URL.
+2. Uploaded media is stored as a Telegram `file_id` keyed by source, job type, exact format and delivery preferences.
+3. AI results are keyed by source, insight type, transcript language, interface language and configured model.
+
+In-memory single-flight maps cover the short interval before a cache entry exists. Identical concurrent metadata requests share one yt-dlp inspection; identical concurrent downloads share one leader job. A cached `file_id` contains no YouTube signed URL and lets Telegram deliver its own server-side copy.
+
 ## Persistence
 
-Flyway owns the schema. H2 is the zero-setup development database; the Docker deployment uses PostgreSQL. Stored media metadata is reduced to the fields needed by the interface instead of persisting yt-dlp's raw signed URLs.
+Flyway owns the schema. H2 is the zero-setup development database; the Docker deployment uses PostgreSQL. Stored media metadata is reduced to the fields needed by the interface instead of persisting yt-dlp's raw signed URLs. Cache entries have independent expiration times and scheduled cleanup.
 
 ## Security boundaries
 

@@ -20,6 +20,8 @@ public record MediaProperties(
         int maxPlaylistItems,
         int maxConcurrentJobs,
         int maxConcurrentInspections,
+        int maxQueuedJobs,
+        int maxQueuedInspections,
         int concurrentFragments,
         int extractorRetries,
         Duration cacheRetention,
@@ -38,6 +40,8 @@ public record MediaProperties(
         maxPlaylistItems = Math.max(1, Math.min(100, maxPlaylistItems));
         maxConcurrentJobs = Math.max(1, Math.min(16, maxConcurrentJobs));
         maxConcurrentInspections = Math.max(1, Math.min(32, maxConcurrentInspections));
+        maxQueuedJobs = Math.max(10, Math.min(10_000, maxQueuedJobs));
+        maxQueuedInspections = Math.max(10, Math.min(10_000, maxQueuedInspections));
         concurrentFragments = Math.max(1, Math.min(16, concurrentFragments));
         extractorRetries = Math.max(1, Math.min(20, extractorRetries));
         cacheRetention = positive(cacheRetention, Duration.ofHours(24));

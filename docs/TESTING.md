@@ -13,6 +13,9 @@ The suite covers:
 - Telegram callback encoding and byte limits;
 - subtitle-to-transcript conversion;
 - metadata parsing for formats and subtitle precedence;
+- compact one-tap keyboards and callback size limits;
+- reusable Telegram `file_id` extraction;
+- local AI summaries and timestamped chapters;
 - full Spring context startup with Flyway and H2.
 
 The JaCoCo report is created under `target/site/jacoco/index.html`.
@@ -28,5 +31,7 @@ The JaCoCo report is created under `target/site/jacoco/index.html`.
 7. Change `/settings`, restart, and confirm preferences persist.
 8. Test a private/deleted link and confirm the error is understandable.
 9. Verify `/actuator/health` and `/admin`.
+10. Request the same quality twice and confirm the second job reports an instant cache hit.
+11. Run every AI Studio mode for one subtitle language.
 
 Do not place real bot tokens or copyrighted test media in the repository.

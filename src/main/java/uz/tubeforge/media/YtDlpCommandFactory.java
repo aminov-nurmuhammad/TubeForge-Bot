@@ -42,7 +42,7 @@ public class YtDlpCommandFactory {
             case AUDIO -> addAudio(command, formatCode);
             case THUMBNAIL -> command.addAll(List.of("--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg"));
             case ALL_THUMBNAILS -> command.addAll(List.of("--skip-download", "--write-all-thumbnails", "--convert-thumbnails", "jpg"));
-            case SUBTITLES, TRANSCRIPT -> addSubtitles(command, formatCode);
+            case SUBTITLES, TRANSCRIPT, AI_SUMMARY, AI_CHAPTERS, AI_STUDY_NOTES -> addSubtitles(command, formatCode);
             case CLIP_VIDEO -> {
                 addVideo(command, formatCode == null || formatCode.isBlank() ? "720" : formatCode);
                 addClip(command, clipRange);
@@ -95,7 +95,9 @@ public class YtDlpCommandFactory {
                     + "worst[ext=mp4]/worst";
         } else {
             int height = parseHeight(quality);
-            selector = "bv[height=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
+            selector = "b[height=" + height + "][ext=mp4][vcodec^=avc1][acodec!=none]/"
+                    + "b[height<=" + height + "][ext=mp4][vcodec^=avc1][acodec!=none]/"
+                    + "bv[height=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
                     + "bv[height=" + height + "]+ba/"
                     + "bv[height<=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
                     + "bv[height<=" + height + "][ext=mp4]+ba[ext=m4a]/"

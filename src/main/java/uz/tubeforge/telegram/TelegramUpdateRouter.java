@@ -30,7 +30,7 @@ public class TelegramUpdateRouter {
     private final AccessService access;
     private final SessionService sessions;
     private final MediaRequestService requests;
-    private final MediaInspectionService inspection;
+    private final MediaInspectionCoordinator inspection;
     private final MediaJobService jobs;
     private final YouTubeUrlParser urlParser;
     private final BotMessages messages;
@@ -38,14 +38,17 @@ public class TelegramUpdateRouter {
     private final FeatureProperties features;
     private final AppUserRepository userRepository;
     private final DownloadJobRepository jobRepository;
+    private final ArtifactCacheService artifactCache;
+    private final AiInsightCacheService insightCache;
     private final TaskExecutor executor;
 
     public TelegramUpdateRouter(TelegramApiClient telegram, UserService users, AccessService access,
                                 SessionService sessions, MediaRequestService requests,
-                                MediaInspectionService inspection, MediaJobService jobs,
+                                MediaInspectionCoordinator inspection, MediaJobService jobs,
                                 YouTubeUrlParser urlParser, BotMessages messages, KeyboardFactory keyboards,
                                 FeatureProperties features, AppUserRepository userRepository,
-                                DownloadJobRepository jobRepository,
+                                DownloadJobRepository jobRepository, ArtifactCacheService artifactCache,
+                                AiInsightCacheService insightCache,
                                 @Qualifier("mediaInspectionExecutor") TaskExecutor executor) {
         this.telegram = telegram;
         this.users = users;
@@ -60,6 +63,8 @@ public class TelegramUpdateRouter {
         this.features = features;
         this.userRepository = userRepository;
         this.jobRepository = jobRepository;
+        this.artifactCache = artifactCache;
+        this.insightCache = insightCache;
         this.executor = executor;
     }
 
@@ -156,11 +161,23 @@ public class TelegramUpdateRouter {
             case "close" -> telegram.deleteMessage(chatId, messageId);
             case "back", "open" -> showPreview(chatId, messageId, captionMessage, user, data.arg(0));
             case "video" -> showVideoFormats(chatId, messageId, captionMessage, user, data.arg(0));
+            case "allv" -> {
+                MediaInfo info = requests.info(ownRequest(data.arg(0), user));
+                editInteractive(chatId, messageId, captionMessage,
+                        "🎛 <b>All available video qualities</b>\n\nChoose the exact source quality.",
+                        keyboards.videoFormats(data.arg(0), info, true));
+            }
             case "audio" -> {
                 ownRequest(data.arg(0), user);
                 editInteractive(chatId, messageId, captionMessage,
                         "🎵 <b>Choose an audio format</b>\n\nThe complete audio track will be extracted.",
                         keyboards.audioFormats(data.arg(0)));
+            }
+            case "alla" -> {
+                ownRequest(data.arg(0), user);
+                editInteractive(chatId, messageId, captionMessage,
+                        "🎵 <b>All audio formats</b>\n\nFor most users MP3 or M4A is the fastest choice.",
+                        keyboards.allAudioFormats(data.arg(0)));
             }
             case "audfmt" -> {
                 ownRequest(data.arg(0), user);
@@ -194,18 +211,41 @@ public class TelegramUpdateRouter {
                         "✂️ <b>Send the clip range</b>\n\nExample: <code>01:20-03:45</code>\nMaximum clip length: 30 minutes.",
                         keyboards.back(data.arg(0)));
             }
+            case "tools" -> {
+                ownRequest(data.arg(0), user);
+                editInteractive(chatId, messageId, captionMessage,
+                        "🧰 <b>TubeForge tools</b>\n\nThumbnails, subtitles, transcripts and precise clips.",
+                        keyboards.toolsMenu(data.arg(0)));
+            }
             case "ai" -> {
                 ownRequest(data.arg(0), user);
-                editInteractive(chatId, messageId, captionMessage, messages.comingSoon(), keyboards.back(data.arg(0)));
+                editInteractive(chatId, messageId, captionMessage, messages.aiStudio(), keyboards.aiStudio(data.arg(0)));
+            }
+            case "aisel" -> {
+                String action = switch (data.arg(1)) {
+                    case "chapters" -> "aic";
+                    case "notes" -> "ain";
+                    default -> "ais";
+                };
+                showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), action,
+                        "Choose the AI transcript language");
             }
             case "info" -> showInfo(chatId, messageId, captionMessage, user, data.arg(0));
             case "dlv" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.VIDEO, data.arg(1), null);
             case "dla" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, data.arg(1) + ":" + data.arg(2), null);
+            case "qv" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.VIDEO, data.arg(1), null);
+            case "qa" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, data.arg(1) + ":192", null);
             case "dlt" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.THUMBNAIL, "jpg", null);
             case "dlta" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.ALL_THUMBNAILS, "jpg", null);
             case "dls" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.SUBTITLES,
                     subtitleCode(data.arg(0), user, data.arg(1)), null);
             case "dtr" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.TRANSCRIPT,
+                    subtitleCode(data.arg(0), user, data.arg(1)), null);
+            case "ais" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AI_SUMMARY,
+                    subtitleCode(data.arg(0), user, data.arg(1)), null);
+            case "aic" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AI_CHAPTERS,
+                    subtitleCode(data.arg(0), user, data.arg(1)), null);
+            case "ain" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AI_STUDY_NOTES,
                     subtitleCode(data.arg(0), user, data.arg(1)), null);
             case "pvideo" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.PLAYLIST_VIDEO,
                     user.getDefaultVideoQuality(), null);
@@ -229,7 +269,7 @@ public class TelegramUpdateRouter {
         Optional<MediaRequest> cached = requests.reusable(user.getTelegramUserId(), chatId, url);
         if (cached.isPresent()) {
             MediaRequest request = cached.orElseThrow();
-            sendCachedPreview(chatId, request, requests.info(request));
+            sendCachedPreview(chatId, request, requests.info(request), user);
             return;
         }
         MediaRequest request = requests.create(user.getTelegramUserId(), chatId, url);
@@ -240,7 +280,7 @@ public class TelegramUpdateRouter {
                 try {
                     MediaInfo info = inspection.inspect(url);
                     requests.markReady(request.getId(), info);
-                    sendInspectionPreview(chatId, progress.messageId(), request.getId(), info);
+                    sendInspectionPreview(chatId, progress.messageId(), request.getId(), info, user);
                 } catch (MediaProcessingException e) {
                     requests.markFailed(request.getId());
                     telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\n"
@@ -258,26 +298,26 @@ public class TelegramUpdateRouter {
         }
     }
 
-    private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info) {
+    private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info, AppUser user) {
         try {
             if (info.thumbnailUrl() != null && !info.thumbnailUrl().isBlank()) {
                 TgMessage message = telegram.sendPhotoUrl(chatId, info.thumbnailUrl(), messages.preview(info),
-                        keyboards.preview(request.getId(), info));
+                        keyboards.preview(request.getId(), info, user));
                 requests.attachPreviewMessage(request.getId(), message.messageId());
                 return;
             }
         } catch (TelegramApiException e) {
             log.debug("Telegram could not render cached thumbnail for {}: {}", request.getId(), e.getMessage());
         }
-        TgMessage message = telegram.sendMessage(chatId, messages.preview(info), keyboards.preview(request.getId(), info));
+        TgMessage message = telegram.sendMessage(chatId, messages.preview(info), keyboards.preview(request.getId(), info, user));
         requests.attachPreviewMessage(request.getId(), message.messageId());
     }
 
-    private void sendInspectionPreview(long chatId, long progressMessageId, String requestId, MediaInfo info) {
+    private void sendInspectionPreview(long chatId, long progressMessageId, String requestId, MediaInfo info, AppUser user) {
         if (info.thumbnailUrl() != null && !info.thumbnailUrl().isBlank()) {
             try {
                 TgMessage preview = telegram.sendPhotoUrl(chatId, info.thumbnailUrl(), messages.preview(info),
-                        keyboards.preview(requestId, info));
+                        keyboards.preview(requestId, info, user));
                 requests.attachPreviewMessage(requestId, preview.messageId());
                 try {
                     telegram.deleteMessage(chatId, progressMessageId);
@@ -289,7 +329,7 @@ public class TelegramUpdateRouter {
                 log.debug("Telegram could not render thumbnail for {}: {}", requestId, e.getMessage());
             }
         }
-        telegram.editMessage(chatId, progressMessageId, messages.preview(info), keyboards.preview(requestId, info));
+        telegram.editMessage(chatId, progressMessageId, messages.preview(info), keyboards.preview(requestId, info, user));
         requests.attachPreviewMessage(requestId, progressMessageId);
     }
 
@@ -326,7 +366,7 @@ public class TelegramUpdateRouter {
     private void showPreview(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
         MediaInfo info = requests.info(request);
-        editInteractive(chatId, messageId, captionMessage, messages.preview(info), keyboards.preview(requestId, info));
+        editInteractive(chatId, messageId, captionMessage, messages.preview(info), keyboards.preview(requestId, info, user));
     }
 
     private void showVideoFormats(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
@@ -439,11 +479,16 @@ public class TelegramUpdateRouter {
                 + "👥 Users: <b>" + userRepository.count() + "</b>\n"
                 + "📦 Total jobs: <b>" + jobRepository.count() + "</b>\n"
                 + "⚙️ Active jobs: <b>" + jobs.activeCount() + "</b>\n"
+                + "⚡ Cached files: <b>" + artifactCache.entries() + "</b>\n"
+                + "🚀 Instant deliveries: <b>" + artifactCache.hits() + "</b>\n"
+                + "✨ Cached AI insights: <b>" + insightCache.entries() + "</b>\n"
+                + "🔎 Active inspections: <b>" + inspection.activeInspections() + "</b>\n"
                 + "🎥 Video: " + on(features.videoDownload()) + "\n"
                 + "🎵 Audio: " + on(features.audioDownload()) + "\n"
                 + "📝 Subtitles: " + on(features.subtitles()) + "\n"
                 + "✂️ Clips: " + on(features.clips()) + "\n"
-                + "📚 Playlists: " + on(features.playlists()), null);
+                + "📚 Playlists: " + on(features.playlists()) + "\n"
+                + "✨ AI Studio: " + on(features.aiStudio()), null);
     }
 
     private String on(boolean value) { return value ? "✅" : "❌"; }

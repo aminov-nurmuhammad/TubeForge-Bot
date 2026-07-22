@@ -10,5 +10,8 @@ public enum JobType {
     CLIP_VIDEO,
     CLIP_AUDIO,
     PLAYLIST_VIDEO,
-    PLAYLIST_AUDIO
+    PLAYLIST_AUDIO,
+    AI_SUMMARY,
+    AI_CHAPTERS,
+    AI_STUDY_NOTES
 }
