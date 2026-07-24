@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import uz.tubeforge.config.FeatureProperties;
 import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.Language;
+import uz.tubeforge.domain.MetadataState;
 import uz.tubeforge.domain.SourceType;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.SubtitleOption;
@@ -47,5 +48,22 @@ class KeyboardFactoryTest {
         assertThat(preview.rows().get(0).get(1).text()).contains("MP3 audio");
         assertThat(compactFormats.rows().stream().flatMap(List::stream).map(button -> button.text()))
                 .contains("🎛 All available qualities");
+    }
+
+    @Test
+    void instantPreviewExposesFastActionsButNotUnreadyTools() {
+        String requestId = UUID.randomUUID().toString();
+        AppUser user = new AppUser(1, "demo", "Demo", null, Language.EN, Instant.now());
+        MediaInfo info = MediaInfo.provisional(
+                new uz.tubeforge.media.ParsedYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ", SourceType.VIDEO));
+
+        var labels = keyboards.preview(requestId, info, user, MetadataState.PENDING).rows().stream()
+                .flatMap(List::stream).map(button -> button.text()).toList();
+
+        assertThat(labels).anyMatch(value -> value.contains("video"));
+        assertThat(labels).anyMatch(value -> value.contains("audio"));
+        assertThat(labels).contains("⏳ Loading advanced tools");
+        assertThat(labels).noneMatch(value -> value.contains("Transcript Studio"));
+        assertThat(labels).noneMatch(value -> value.contains("Video options"));
     }
 }

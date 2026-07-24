@@ -32,6 +32,6 @@ The JaCoCo report is created under `target/site/jacoco/index.html`.
 8. Test a private/deleted link and confirm the error is understandable.
 9. Verify `/actuator/health` and `/admin`.
 10. Request the same quality twice and confirm the second job reports an instant cache hit.
-11. Run every AI Studio mode for one subtitle language.
+11. Run every Transcript Studio mode for one subtitle language.
 
 Do not place real bot tokens or copyrighted test media in the repository.

@@ -1,15 +1,17 @@
-# TubeForge Bot 3
+# TubeForge Bot 4
 
 TubeForge is a complete, self-hosted Telegram media toolkit built with Java 17 and Spring Boot 4. Send a supported YouTube link and use inline buttons to create an authorized video, audio track, thumbnail bundle, subtitle file, clean transcript, precise clip, or playlist export.
 
-The application uses only free, open-source components. It does not require an AI API, payment provider, domain, webhook, or subscription. AI Studio includes a built-in local insight engine and can optionally use a local Ollama model.
+The application uses only free, open-source components. It does not require a paid AI API, payment provider, domain, webhook, or subscription. Transcript Studio includes fast built-in extractive analysis and can optionally use a real local Ollama model.
 
 > Use TubeForge only for media you own, public-domain or Creative Commons material, and other content you are authorized to download or process. Do not use it to bypass access controls or infringe copyright.
 
 ## Features
 
 - Automatic recognition of normal YouTube URLs, `youtu.be`, Shorts, timestamped links and public playlists
-- Rich image preview with automatic text fallback, title, channel, duration, views and media type
+- Instant link shell: one-tap video/audio appears before the slower yt-dlp metadata inspection finishes
+- Background metadata hydration with visible pending/degraded states and one-tap retry
+- Rich image preview with deterministic YouTube thumbnail and automatic text fallback
 - Inline keyboards throughout the complete flow
 - Video quality selection from the formats actually reported by YouTube, plus best and smallest options
 - Full audio extraction to MP3, M4A, WAV, OGG or FLAC, with quality selection and metadata
@@ -24,12 +26,13 @@ The application uses only free, open-source components. It does not require an A
 - One-tap default video/audio actions and compact recommended quality menus
 - Global Telegram `file_id` cache for near-instant repeat delivery across users
 - Single-flight coordination: one download serves every simultaneous identical request
-- Free local AI summaries, timestamped chapters, key moments and study notes
+- Free local transcript summaries, timestamped chapters, key moments and study notes
 - Optional Ollama models with automatic local fallback and persistent AI-result caching
 - Separate inspection and download pools, metadata reuse and duplicate-job protection
-- Verified video+audio streams, Telegram-compatible H.264/AAC output and fast-start remuxing
+- Verified video+audio streams and zero-conversion delivery when the file is already Telegram-ready H.264/AAC MP4
 - Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
 - Actionable diagnostics for YouTube rate limits, verification prompts, FFmpeg and JavaScript runtime failures
+- Interactive owner control center with workload, cache, performance and media-tool health views
 - Daily user quotas, owner/admin IDs, public or allowlist access
 - Terms acceptance and privacy information
 - Automatic compression and multi-part delivery for files above the configured Telegram limit
@@ -124,14 +127,13 @@ DATABASE_PASSWORD=your_local_password
 
 ```mermaid
 flowchart TD
-    A["Send YouTube link"] --> B["Inspect metadata"]
-    B --> C{"Cached result?"}
-    C -->|Yes| D["Instant Telegram file_id delivery"]
-    C -->|No| E["One-tap or advanced tools"]
-    E --> F["Single shared background job"]
-    F --> G["Download / AI / convert"]
-    G --> H["Store reusable result"]
-    H --> I["Deliver in Telegram"]
+    A["Send YouTube link"] --> B["Instant one-tap card"]
+    B --> C["Metadata loads in background"]
+    B --> D{"Cached artifact?"}
+    D -->|Yes| E["Instant file_id delivery"]
+    D -->|No| F["Shared media job"]
+    F --> G["Store and deliver"]
+    C --> H["Advanced tools become ready"]
 ```
 
 ## Telegram commands
@@ -146,7 +148,7 @@ flowchart TD
 | `/terms` | Review responsible-use terms |
 | `/privacy` | Review locally stored data |
 | `/id` | Display the numeric Telegram user ID |
-| `/admin` | Show owner statistics and feature state |
+| `/admin` | Open the interactive owner control center |
 
 ## Important configuration
 
@@ -154,7 +156,7 @@ flowchart TD
 |---|---:|---|
 | `TELEGRAM_BOT_TOKEN` | required | Secret token from BotFather |
 | `ACCESS_MODE` | `PUBLIC` | `PUBLIC` or `ALLOWLIST` |
-| `ADMIN_USER_IDS` | empty | Comma-separated numeric Telegram IDs |
+| `ADMIN_USER_IDS` | `1491734372` | Comma-separated numeric Telegram IDs |
 | `ALLOWED_USER_IDS` | empty | IDs permitted in allowlist mode |
 | `DAILY_JOB_LIMIT` | `20` | Jobs per non-admin user in 24 hours |
 | `MAX_CONCURRENT_JOBS` | `2` | Media processes running simultaneously |
@@ -183,16 +185,16 @@ When many users request the same uncached result simultaneously, single-flight c
 
 The first uncached request cannot be guaranteed in milliseconds: its minimum time is controlled by YouTube response time, media size, server bandwidth and Telegram upload speed. TubeForge minimizes that path by preferring progressive MP4 with embedded audio when available, downloading fragments concurrently, stream-copying compatible codecs and transcoding only when required.
 
-## AI Studio
+## Transcript Studio
 
-AI Studio works immediately with no cloud key and no payment:
+Transcript Studio works immediately with no cloud key and no payment:
 
 - Smart summary
 - Timestamped chapters and key moments
 - Study notes and keywords
 - Persistent reuse of identical AI results
 
-The default `AI_PROVIDER=local` uses deterministic language processing inside the Java application. For deeper LLM output, install Ollama on the host and configure:
+The default `AI_PROVIDER=local` uses deterministic extractive language processing inside the Java application; the interface labels it truthfully. For generative LLM output, install Ollama on the host and configure:
 
 ```dotenv
 AI_PROVIDER=ollama
@@ -252,7 +254,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-3.0.0.jar
+target/tubeforge-bot-4.0.0.jar
 ```
 
 ## Architecture

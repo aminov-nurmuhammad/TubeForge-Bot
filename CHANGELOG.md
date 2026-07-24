@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.0.0
+
+- Replaced blocking link inspection with an instant one-tap preview and background metadata hydration.
+- Added explicit pending, ready and degraded metadata states; quick downloads survive YouTube inspection failures.
+- Added refresh/retry UX for formats, subtitles, transcripts and other metadata-dependent tools.
+- Made deterministic YouTube thumbnails available immediately and added direct best-thumbnail delivery.
+- Removed the unconditional FFmpeg remux: Telegram-ready H.264/AAC MP4 now passes through unchanged after one probe.
+- Renamed the default local feature to Transcript Studio and hid it when no subtitles exist; Ollama remains the optional real LLM provider.
+- Improved local transcript ranking for short subtitle cues, duplicate suppression and non-empty fallbacks.
+- Added an interactive admin control center for workload, cache counters, feature state and yt-dlp/FFmpeg health.
+- Configured Telegram ID `1491734372` as the default owner while keeping `ADMIN_USER_IDS` overridable.
+- Added callback contract, instant-preview ID extraction and media fast-path tests.
+
 ## 3.0.0
 
 - Added a persistent global Telegram `file_id` cache: repeated media/format requests skip YouTube, FFmpeg and binary upload.

@@ -3,6 +3,7 @@ package uz.tubeforge.repository;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import uz.tubeforge.domain.MediaRequest;
+import uz.tubeforge.domain.MetadataState;
 import uz.tubeforge.domain.RequestStatus;
 
 import java.time.Instant;
@@ -15,6 +16,6 @@ public interface MediaRequestRepository extends JpaRepository<MediaRequest, Stri
     Optional<MediaRequest> findFirstByTelegramUserIdAndChatIdAndSourceUrlAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
             long userId, long chatId, String sourceUrl, RequestStatus status, Instant expiresAt);
 
-    Optional<MediaRequest> findFirstBySourceUrlHashAndStatusAndMetadataInspectedAtAfterOrderByCreatedAtDesc(
-            String sourceUrlHash, RequestStatus status, Instant inspectedAfter);
+    Optional<MediaRequest> findFirstBySourceUrlHashAndStatusAndMetadataStateAndMetadataInspectedAtAfterOrderByCreatedAtDesc(
+            String sourceUrlHash, RequestStatus status, MetadataState metadataState, Instant inspectedAfter);
 }

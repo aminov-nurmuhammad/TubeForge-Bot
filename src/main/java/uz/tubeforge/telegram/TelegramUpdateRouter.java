@@ -6,8 +6,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Component;
+import uz.tubeforge.config.AiProperties;
 import uz.tubeforge.config.FeatureProperties;
 import uz.tubeforge.domain.*;
+import uz.tubeforge.health.MediaToolsHealthIndicator;
 import uz.tubeforge.media.*;
 import uz.tubeforge.repository.AppUserRepository;
 import uz.tubeforge.repository.DownloadJobRepository;
@@ -20,10 +22,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class TelegramUpdateRouter {
     private static final Logger log = LoggerFactory.getLogger(TelegramUpdateRouter.class);
+    private static final Set<String> SUPPORTED_CALLBACK_ACTIONS = Set.of(
+            "accept", "close", "back", "open", "video", "allv", "audio", "alla", "audfmt",
+            "thumb", "subs", "trans", "clip", "cliptype", "tools", "ai", "aisel", "info",
+            "dlv", "dla", "qv", "qa", "dlt", "dlta", "dls", "dtr", "ais", "aic", "ain",
+            "pvideo", "paudio", "cancel", "settings", "setlang", "lang", "setvq", "vq",
+            "setaf", "af", "toggledoc", "togglecmp", "meta", "metaretry",
+            "adm", "admqueue", "admcache", "admhealth"
+    );
 
     private final TelegramApiClient telegram;
     private final UserService users;
@@ -40,6 +51,9 @@ public class TelegramUpdateRouter {
     private final DownloadJobRepository jobRepository;
     private final ArtifactCacheService artifactCache;
     private final AiInsightCacheService insightCache;
+    private final PerformanceMetrics metrics;
+    private final AiProperties aiProperties;
+    private final MediaToolsHealthIndicator mediaToolsHealth;
     private final TaskExecutor executor;
 
     public TelegramUpdateRouter(TelegramApiClient telegram, UserService users, AccessService access,
@@ -48,7 +62,8 @@ public class TelegramUpdateRouter {
                                 YouTubeUrlParser urlParser, BotMessages messages, KeyboardFactory keyboards,
                                 FeatureProperties features, AppUserRepository userRepository,
                                 DownloadJobRepository jobRepository, ArtifactCacheService artifactCache,
-                                AiInsightCacheService insightCache,
+                                AiInsightCacheService insightCache, PerformanceMetrics metrics,
+                                AiProperties aiProperties, MediaToolsHealthIndicator mediaToolsHealth,
                                 @Qualifier("mediaInspectionExecutor") TaskExecutor executor) {
         this.telegram = telegram;
         this.users = users;
@@ -65,6 +80,9 @@ public class TelegramUpdateRouter {
         this.jobRepository = jobRepository;
         this.artifactCache = artifactCache;
         this.insightCache = insightCache;
+        this.metrics = metrics;
+        this.aiProperties = aiProperties;
+        this.mediaToolsHealth = mediaToolsHealth;
         this.executor = executor;
     }
 
@@ -75,6 +93,10 @@ public class TelegramUpdateRouter {
         } catch (Exception e) {
             log.error("Failed to route Telegram update {}", update.updateId(), e);
         }
+    }
+
+    static boolean supportsCallbackAction(String action) {
+        return SUPPORTED_CALLBACK_ACTIONS.contains(action);
     }
 
     private void handleMessage(TgMessage message) {
@@ -162,7 +184,9 @@ public class TelegramUpdateRouter {
             case "back", "open" -> showPreview(chatId, messageId, captionMessage, user, data.arg(0));
             case "video" -> showVideoFormats(chatId, messageId, captionMessage, user, data.arg(0));
             case "allv" -> {
-                MediaInfo info = requests.info(ownRequest(data.arg(0), user));
+                MediaRequest request = ownRequest(data.arg(0), user);
+                MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+                if (info == null) return;
                 editInteractive(chatId, messageId, captionMessage,
                         "🎛 <b>All available video qualities</b>\n\nChoose the exact source quality.",
                         keyboards.videoFormats(data.arg(0), info, true));
@@ -199,7 +223,8 @@ public class TelegramUpdateRouter {
             case "subs" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dls", "Subtitles");
             case "trans" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dtr", "Transcript language");
             case "clip" -> {
-                ownRequest(data.arg(0), user);
+                MediaRequest request = ownRequest(data.arg(0), user);
+                if (metadataInfo(chatId, messageId, captionMessage, request) == null) return;
                 editInteractive(chatId, messageId, captionMessage,
                         "✂️ <b>Create a precise clip</b>\n\nChoose the result type, then send a timestamp range.",
                         keyboards.clipMenu(data.arg(0)));
@@ -212,13 +237,22 @@ public class TelegramUpdateRouter {
                         keyboards.back(data.arg(0)));
             }
             case "tools" -> {
-                ownRequest(data.arg(0), user);
+                MediaRequest request = ownRequest(data.arg(0), user);
+                if (metadataInfo(chatId, messageId, captionMessage, request) == null) return;
                 editInteractive(chatId, messageId, captionMessage,
                         "🧰 <b>TubeForge tools</b>\n\nThumbnails, subtitles, transcripts and precise clips.",
                         keyboards.toolsMenu(data.arg(0)));
             }
             case "ai" -> {
-                ownRequest(data.arg(0), user);
+                MediaRequest request = ownRequest(data.arg(0), user);
+                MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+                if (info == null) return;
+                if (info.subtitles().isEmpty()) {
+                    editInteractive(chatId, messageId, captionMessage,
+                            "📝 <b>Transcript Studio needs subtitles</b>\n\nThis video does not expose official or automatic captions.",
+                            keyboards.back(data.arg(0)));
+                    return;
+                }
                 editInteractive(chatId, messageId, captionMessage, messages.aiStudio(), keyboards.aiStudio(data.arg(0)));
             }
             case "aisel" -> {
@@ -235,7 +269,7 @@ public class TelegramUpdateRouter {
             case "dla" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, data.arg(1) + ":" + data.arg(2), null);
             case "qv" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.VIDEO, data.arg(1), null);
             case "qa" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.AUDIO, data.arg(1) + ":192", null);
-            case "dlt" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.THUMBNAIL, "jpg", null);
+            case "dlt" -> sendBestThumbnail(user, data.arg(0));
             case "dlta" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.ALL_THUMBNAILS, "jpg", null);
             case "dls" -> jobs.queue(user.getTelegramUserId(), data.arg(0), JobType.SUBTITLES,
                     subtitleCode(data.arg(0), user, data.arg(1)), null);
@@ -261,6 +295,12 @@ public class TelegramUpdateRouter {
             case "af" -> { users.changeAudioFormat(user.getTelegramUserId(), data.arg(0)); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
             case "toggledoc" -> { users.toggleDocument(user.getTelegramUserId()); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
             case "togglecmp" -> { users.toggleCompression(user.getTelegramUserId()); refreshSettings(chatId, messageId, captionMessage, user.getTelegramUserId()); }
+            case "meta" -> showMetadataStatus(chatId, messageId, captionMessage, user, data.arg(0));
+            case "metaretry" -> retryMetadata(chatId, messageId, captionMessage, user, data.arg(0));
+            case "adm" -> editAdmin(chatId, messageId, captionMessage, user, adminOverview());
+            case "admqueue" -> editAdmin(chatId, messageId, captionMessage, user, adminWorkload());
+            case "admcache" -> editAdmin(chatId, messageId, captionMessage, user, adminCache());
+            case "admhealth" -> showAdminHealth(chatId, messageId, captionMessage, user);
             default -> telegram.sendMessage(chatId, "This button is no longer available. Send the link again.", null);
         }
     }
@@ -272,30 +312,19 @@ public class TelegramUpdateRouter {
             sendCachedPreview(chatId, request, requests.info(request), user);
             return;
         }
-        MediaRequest request = requests.create(user.getTelegramUserId(), chatId, url);
-        TgMessage progress = telegram.sendMessage(chatId, messages.inspecting(), null);
-        requests.attachPreviewMessage(request.getId(), progress.messageId());
+        MediaRequest request = requests.createInstant(user.getTelegramUserId(), chatId, url);
+        MediaInfo instantInfo = requests.info(request);
+        TgMessage preview;
         try {
-            executor.execute(() -> {
-                try {
-                    MediaInfo info = inspection.inspect(url);
-                    requests.markReady(request.getId(), info);
-                    sendInspectionPreview(chatId, progress.messageId(), request.getId(), info, user);
-                } catch (MediaProcessingException e) {
-                    requests.markFailed(request.getId());
-                    telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\n"
-                            + Html.escape(e.getUserMessage()) + "\n\n<code>" + e.getCode() + "</code>", null);
-                } catch (Exception e) {
-                    requests.markFailed(request.getId());
-                    log.error("Link inspection failed", e);
-                    telegram.editMessage(chatId, progress.messageId(), "❌ <b>Could not inspect this link</b>\n\nAn unexpected server error occurred.", null);
-                }
-            });
-        } catch (TaskRejectedException e) {
-            requests.markFailed(request.getId());
-            telegram.editMessage(chatId, progress.messageId(),
-                    "⚠️ <b>Server is busy</b>\n\nToo many links are being inspected. Please try again shortly.", null);
+            preview = telegram.sendPhotoUrl(chatId, instantInfo.thumbnailUrl(),
+                    messages.preview(instantInfo, MetadataState.PENDING),
+                    keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+        } catch (TelegramApiException e) {
+            preview = telegram.sendMessage(chatId, messages.preview(instantInfo, MetadataState.PENDING),
+                    keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
         }
+        requests.attachPreviewMessage(request.getId(), preview.messageId());
+        scheduleMetadata(request.getId(), url, user, chatId, preview.messageId(), preview.caption() != null);
     }
 
     private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info, AppUser user) {
@@ -311,26 +340,6 @@ public class TelegramUpdateRouter {
         }
         TgMessage message = telegram.sendMessage(chatId, messages.preview(info), keyboards.preview(request.getId(), info, user));
         requests.attachPreviewMessage(request.getId(), message.messageId());
-    }
-
-    private void sendInspectionPreview(long chatId, long progressMessageId, String requestId, MediaInfo info, AppUser user) {
-        if (info.thumbnailUrl() != null && !info.thumbnailUrl().isBlank()) {
-            try {
-                TgMessage preview = telegram.sendPhotoUrl(chatId, info.thumbnailUrl(), messages.preview(info),
-                        keyboards.preview(requestId, info, user));
-                requests.attachPreviewMessage(requestId, preview.messageId());
-                try {
-                    telegram.deleteMessage(chatId, progressMessageId);
-                } catch (TelegramApiException e) {
-                    log.debug("Could not remove inspection message {}: {}", progressMessageId, e.getMessage());
-                }
-                return;
-            } catch (TelegramApiException e) {
-                log.debug("Telegram could not render thumbnail for {}: {}", requestId, e.getMessage());
-            }
-        }
-        telegram.editMessage(chatId, progressMessageId, messages.preview(info), keyboards.preview(requestId, info, user));
-        requests.attachPreviewMessage(requestId, progressMessageId);
     }
 
     private void acceptTerms(long chatId, long messageId, AppUser user) {
@@ -366,12 +375,14 @@ public class TelegramUpdateRouter {
     private void showPreview(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
         MediaInfo info = requests.info(request);
-        editInteractive(chatId, messageId, captionMessage, messages.preview(info), keyboards.preview(requestId, info, user));
+        editInteractive(chatId, messageId, captionMessage, messages.preview(info, request.getMetadataState()),
+                keyboards.preview(requestId, info, user, request.getMetadataState()));
     }
 
     private void showVideoFormats(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
-        MediaInfo info = requests.info(request);
+        MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+        if (info == null) return;
         editInteractive(chatId, messageId, captionMessage,
                 "🎥 <b>Choose video quality</b>\n\nSizes are estimates and may change when video and audio are merged.",
                 keyboards.videoFormats(requestId, info));
@@ -379,7 +390,9 @@ public class TelegramUpdateRouter {
 
     private void showSubtitleMenu(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId,
                                   String action, String title) {
-        MediaInfo info = requests.info(ownRequest(requestId, user));
+        MediaRequest request = ownRequest(requestId, user);
+        MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+        if (info == null) return;
         if (info.subtitles().isEmpty()) {
             editInteractive(chatId, messageId, captionMessage,
                     "📝 <b>No subtitles found</b>\n\nThis video does not expose official or automatic captions.",
@@ -392,7 +405,9 @@ public class TelegramUpdateRouter {
     }
 
     private void showInfo(long chatId, long messageId, boolean captionMessage, AppUser user, String requestId) {
-        MediaInfo info = requests.info(ownRequest(requestId, user));
+        MediaRequest request = ownRequest(requestId, user);
+        MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+        if (info == null) return;
         String description = info.description() == null ? "" : info.description().strip();
         int descriptionLimit = captionMessage ? 450 : 1200;
         if (description.length() > descriptionLimit) description = description.substring(0, descriptionLimit) + "…";
@@ -432,7 +447,7 @@ public class TelegramUpdateRouter {
 
     private void showHistory(long chatId, AppUser user) {
         List<MediaRequest> history = requests.recent(user.getTelegramUserId(), 8).stream()
-                .filter(request -> request.getStatus() == RequestStatus.READY).toList();
+                .filter(requests::isUsable).toList();
         if (history.isEmpty()) {
             telegram.sendMessage(chatId, "🕘 <b>No history yet</b>\n\nSend your first YouTube link.", null);
             return;
@@ -475,20 +490,173 @@ public class TelegramUpdateRouter {
             telegram.sendMessage(chatId, "🔒 This command is available only to configured administrators.", null);
             return;
         }
-        telegram.sendMessage(chatId, "🛡 <b>TubeForge administration</b>\n\n"
+        telegram.sendMessage(chatId, adminOverview(), keyboards.admin());
+    }
+
+    private void scheduleMetadata(String requestId, ParsedYouTubeUrl url, AppUser user, long chatId,
+                                  long messageId, boolean captionMessage) {
+        try {
+            executor.execute(() -> {
+                try {
+                    MediaInfo info = inspection.inspect(url);
+                    MediaRequest ready = requests.markReady(requestId, info);
+                    editInteractive(chatId, messageId, captionMessage, messages.preview(info),
+                            keyboards.preview(requestId, info, user, ready.getMetadataState()));
+                } catch (MediaProcessingException e) {
+                    MediaRequest degraded = requests.markMetadataDegraded(requestId, e.getCode(), e.getUserMessage());
+                    MediaInfo info = requests.info(degraded);
+                    editInteractive(chatId, messageId, captionMessage,
+                            messages.preview(info, MetadataState.DEGRADED),
+                            keyboards.preview(requestId, info, user, MetadataState.DEGRADED));
+                } catch (TelegramApiException e) {
+                    log.debug("Metadata was hydrated but preview {} could not be updated: {}", requestId, e.getMessage());
+                } catch (Exception e) {
+                    log.error("Background metadata hydration failed for {}", requestId, e);
+                    MediaRequest degraded = requests.markMetadataDegraded(requestId, "INSPECTION_FAILED",
+                            "The advanced analysis failed unexpectedly");
+                    MediaInfo info = requests.info(degraded);
+                    editInteractive(chatId, messageId, captionMessage,
+                            messages.preview(info, MetadataState.DEGRADED),
+                            keyboards.preview(requestId, info, user, MetadataState.DEGRADED));
+                }
+            });
+        } catch (TaskRejectedException e) {
+            MediaRequest degraded = requests.markMetadataDegraded(requestId, "INSPECTION_QUEUE_FULL",
+                    "The advanced-analysis queue is full");
+            MediaInfo info = requests.info(degraded);
+            editInteractive(chatId, messageId, captionMessage, messages.preview(info, MetadataState.DEGRADED),
+                    keyboards.preview(requestId, info, user, MetadataState.DEGRADED));
+        }
+    }
+
+    private MediaInfo metadataInfo(long chatId, long messageId, boolean captionMessage, MediaRequest request) {
+        if (request.getMetadataState() == MetadataState.READY) return requests.info(request);
+        showMetadataState(chatId, messageId, captionMessage, request);
+        return null;
+    }
+
+    private void showMetadataStatus(long chatId, long messageId, boolean captionMessage,
+                                    AppUser user, String requestId) {
+        MediaRequest request = ownRequest(requestId, user);
+        if (request.getMetadataState() == MetadataState.READY) {
+            showPreview(chatId, messageId, captionMessage, user, requestId);
+            return;
+        }
+        showMetadataState(chatId, messageId, captionMessage, request);
+    }
+
+    private void showMetadataState(long chatId, long messageId, boolean captionMessage, MediaRequest request) {
+        String text;
+        if (request.getMetadataState() == MetadataState.DEGRADED) {
+            text = "⚠️ <b>Advanced analysis is unavailable</b>\n\n"
+                    + Html.escape(request.getMetadataErrorMessage())
+                    + "\n\nQuick video, audio and thumbnail downloads still work.\n"
+                    + "<code>" + Html.escape(request.getMetadataErrorCode()) + "</code>";
+        } else {
+            text = "⏳ <b>Advanced tools are still loading</b>\n\n"
+                    + "Quick video and audio can start now. Formats, subtitles and Transcript Studio will appear automatically.";
+        }
+        editInteractive(chatId, messageId, captionMessage, text,
+                keyboards.metadataStatus(request.getId(), request.getMetadataState()));
+    }
+
+    private void retryMetadata(long chatId, long messageId, boolean captionMessage,
+                               AppUser user, String requestId) {
+        MediaRequest request = ownRequest(requestId, user);
+        ParsedYouTubeUrl url = urlParser.parse(request.getSourceUrl())
+                .orElseThrow(() -> new IllegalStateException("The stored YouTube link is invalid"));
+        requests.markMetadataPending(requestId);
+        MediaInfo info = requests.info(request);
+        editInteractive(chatId, messageId, captionMessage, messages.preview(info, MetadataState.PENDING),
+                keyboards.preview(requestId, info, user, MetadataState.PENDING));
+        scheduleMetadata(requestId, url, user, chatId, messageId, captionMessage);
+    }
+
+    private void sendBestThumbnail(AppUser user, String requestId) {
+        MediaRequest request = ownRequest(requestId, user);
+        MediaInfo info = requests.info(request);
+        if (info.thumbnailUrl() == null || info.thumbnailUrl().isBlank()) {
+            jobs.queue(user.getTelegramUserId(), requestId, JobType.THUMBNAIL, "jpg", null);
+            return;
+        }
+        try {
+            telegram.sendPhotoUrl(request.getChatId(), info.thumbnailUrl(),
+                    "🖼 <b>" + Html.escape(info.title()) + "</b>\n\nBest available YouTube thumbnail.", null);
+        } catch (TelegramApiException e) {
+            jobs.queue(user.getTelegramUserId(), requestId, JobType.THUMBNAIL, "jpg", null);
+        }
+    }
+
+    private void editAdmin(long chatId, long messageId, boolean captionMessage, AppUser user, String text) {
+        requireAdmin(user);
+        editInteractive(chatId, messageId, captionMessage, text, keyboards.admin());
+    }
+
+    private String adminOverview() {
+        return "🛡 <b>TubeForge Control Center</b>\n\n"
                 + "👥 Users: <b>" + userRepository.count() + "</b>\n"
                 + "📦 Total jobs: <b>" + jobRepository.count() + "</b>\n"
                 + "⚙️ Active jobs: <b>" + jobs.activeCount() + "</b>\n"
-                + "⚡ Cached files: <b>" + artifactCache.entries() + "</b>\n"
-                + "🚀 Instant deliveries: <b>" + artifactCache.hits() + "</b>\n"
-                + "✨ Cached AI insights: <b>" + insightCache.entries() + "</b>\n"
-                + "🔎 Active inspections: <b>" + inspection.activeInspections() + "</b>\n"
+                + "🔎 Active inspections: <b>" + inspection.activeInspections() + "</b>\n\n"
                 + "🎥 Video: " + on(features.videoDownload()) + "\n"
                 + "🎵 Audio: " + on(features.audioDownload()) + "\n"
                 + "📝 Subtitles: " + on(features.subtitles()) + "\n"
                 + "✂️ Clips: " + on(features.clips()) + "\n"
                 + "📚 Playlists: " + on(features.playlists()) + "\n"
-                + "✨ AI Studio: " + on(features.aiStudio()), null);
+                + "🧠 Transcript Studio: " + on(features.aiStudio()) + "\n"
+                + "🤖 Engine: <code>" + Html.escape(aiProperties.ollama()
+                ? "Ollama / " + aiProperties.model() : "local extractive") + "</code>";
+    }
+
+    private String adminWorkload() {
+        long queued = jobRepository.countByStatusIn(List.of(JobStatus.QUEUED));
+        long running = jobRepository.countByStatusIn(List.of(JobStatus.RUNNING));
+        long delivering = jobRepository.countByStatusIn(List.of(JobStatus.DELIVERING));
+        long failed = jobRepository.countByStatusIn(List.of(JobStatus.FAILED));
+        return "⚙️ <b>Workload</b>\n\n"
+                + "⏳ Queued: <b>" + queued + "</b>\n"
+                + "🛠 Running: <b>" + running + "</b>\n"
+                + "📤 Delivering: <b>" + delivering + "</b>\n"
+                + "❌ Failed (all time): <b>" + failed + "</b>\n"
+                + "🔎 Metadata workers active: <b>" + inspection.activeInspections() + "</b>";
+    }
+
+    private String adminCache() {
+        PerformanceMetrics.Snapshot value = metrics.snapshot();
+        return "⚡ <b>Cache & performance</b>\n\n"
+                + "📁 Reusable Telegram files: <b>" + artifactCache.entries() + "</b>\n"
+                + "🚀 Artifact deliveries: <b>" + artifactCache.hits() + "</b>\n"
+                + "🧠 Cached transcript insights: <b>" + insightCache.entries() + "</b>\n\n"
+                + "Metadata hits / misses: <b>" + value.metadataHits() + " / " + value.metadataMisses() + "</b>\n"
+                + "Artifact hits / misses: <b>" + value.artifactHits() + " / " + value.artifactMisses() + "</b>\n"
+                + "Coalesced duplicate work: <b>" + value.coalescedJobs() + "</b>\n"
+                + "Local / Ollama analysis: <b>" + value.aiLocal() + " / " + value.aiOllama() + "</b>";
+    }
+
+    private void showAdminHealth(long chatId, long messageId, boolean captionMessage, AppUser user) {
+        requireAdmin(user);
+        editInteractive(chatId, messageId, captionMessage,
+                "🩺 <b>Checking yt-dlp, FFmpeg and FFprobe…</b>", keyboards.admin());
+        try {
+            executor.execute(() -> {
+                var health = mediaToolsHealth.health();
+                StringBuilder text = new StringBuilder("🩺 <b>Media tool health</b>\n\n")
+                        .append("Overall: <b>").append(Html.escape(health.getStatus().getCode())).append("</b>\n");
+                health.getDetails().forEach((key, value) -> text.append("• ")
+                        .append(Html.escape(key)).append(": <code>")
+                        .append(Html.escape(String.valueOf(value))).append("</code>\n"));
+                editInteractive(chatId, messageId, captionMessage, text.toString(), keyboards.admin());
+            });
+        } catch (TaskRejectedException e) {
+            editInteractive(chatId, messageId, captionMessage,
+                    "⚠️ <b>Health check queue is busy</b>\n\nTry again shortly.", keyboards.admin());
+        }
+    }
+
+    private void requireAdmin(AppUser user) {
+        if (!access.isAdmin(user.getTelegramUserId())) {
+            throw new SecurityException("Administrator access required");
+        }
     }
 
     private String on(boolean value) { return value ? "✅" : "❌"; }

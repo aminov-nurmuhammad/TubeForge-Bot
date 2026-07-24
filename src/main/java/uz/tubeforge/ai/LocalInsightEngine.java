@@ -73,17 +73,53 @@ public class LocalInsightEngine {
     private List<String> ranked(List<TranscriptCue> cues, int limit) {
         Map<String, Integer> frequency = frequencies(cues);
         List<ScoredSentence> candidates = new ArrayList<>();
-        for (int index = 0; index < cues.size(); index++) {
-            String sentence = shorten(cues.get(index).text(), 240);
-            if (sentence.length() < 35) continue;
+        List<IndexedText> grouped = groupedText(cues);
+        for (IndexedText value : grouped) {
+            String sentence = shorten(value.text(), 240);
+            if (sentence.length() < 20) continue;
             double score = words(sentence).stream().mapToDouble(word -> frequency.getOrDefault(word, 0)).sum();
             score /= Math.max(8, words(sentence).size());
-            score += index < Math.max(3, cues.size() / 12) ? 1.5 : 0;
-            candidates.add(new ScoredSentence(index, sentence, score));
+            score += value.index() < Math.max(3, grouped.size() / 12) ? 1.5 : 0;
+            candidates.add(new ScoredSentence(value.index(), sentence, score));
         }
-        return candidates.stream().sorted(Comparator.comparingDouble(ScoredSentence::score).reversed())
-                .limit(limit).sorted(Comparator.comparingInt(ScoredSentence::index))
+        List<ScoredSentence> selected = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (ScoredSentence candidate : candidates.stream()
+                .sorted(Comparator.comparingDouble(ScoredSentence::score).reversed()).toList()) {
+            String fingerprint = fingerprint(candidate.text());
+            if (!fingerprint.isBlank() && seen.add(fingerprint)) selected.add(candidate);
+            if (selected.size() == limit) break;
+        }
+        if (selected.isEmpty()) {
+            return grouped.stream().map(IndexedText::text).filter(value -> !value.isBlank())
+                    .limit(limit).map(value -> shorten(value, 240)).toList();
+        }
+        return selected.stream().sorted(Comparator.comparingInt(ScoredSentence::index))
                 .map(ScoredSentence::text).toList();
+    }
+
+    private List<IndexedText> groupedText(List<TranscriptCue> cues) {
+        List<IndexedText> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int start = 0;
+        for (int index = 0; index < cues.size(); index++) {
+            String clean = cues.get(index).text().replaceAll("\\s+", " ").strip();
+            if (clean.isBlank()) continue;
+            if (current.isEmpty()) start = index;
+            if (!current.isEmpty()) current.append(' ');
+            current.append(clean);
+            boolean sentenceEnd = clean.matches(".*[.!?…]$");
+            if (current.length() >= 80 || sentenceEnd || index == cues.size() - 1) {
+                result.add(new IndexedText(start, current.toString()));
+                current.setLength(0);
+            }
+        }
+        if (!current.isEmpty()) result.add(new IndexedText(start, current.toString()));
+        return result;
+    }
+
+    private String fingerprint(String value) {
+        return words(value).stream().distinct().limit(10).sorted().collect(Collectors.joining("|"));
     }
 
     private Map<String, Integer> frequencies(List<TranscriptCue> cues) {
@@ -137,4 +173,5 @@ public class LocalInsightEngine {
     }
 
     private record ScoredSentence(int index, String text, double score) {}
+    private record IndexedText(int index, String text) {}
 }

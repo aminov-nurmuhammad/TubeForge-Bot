@@ -2,11 +2,12 @@
 
 ## Fast paths
 
-1. **Metadata hit:** a normalized URL is copied from PostgreSQL/H2 into a new user-owned request without running yt-dlp.
-2. **Artifact hit:** Telegram receives an existing `file_id`; YouTube, local storage, FFmpeg and binary upload are skipped.
-3. **Single flight:** concurrent cache misses share one inspection or one media build.
-4. **Progressive MP4:** compatible combined video+audio is preferred before separate DASH streams where the requested quality allows it.
-5. **Selective conversion:** compatible H.264/AAC media is remuxed with stream copy; only incompatible streams are transcoded.
+1. **Instant shell:** URL parsing and one database insert make one-tap actions available without waiting for yt-dlp.
+2. **Metadata hit:** a normalized URL is copied from PostgreSQL/H2 into a new user-owned request without running yt-dlp.
+3. **Artifact hit:** Telegram receives an existing `file_id`; YouTube, local storage, FFmpeg and binary upload are skipped.
+4. **Single flight:** concurrent cache misses share one inspection or one media build.
+5. **Progressive MP4:** compatible combined video+audio is preferred before separate DASH streams where the requested quality allows it.
+6. **Zero conversion:** H.264/AAC MP4 passes one FFprobe call and is uploaded unchanged; only incompatible media invokes FFmpeg.
 
 ## Capacity model
 
@@ -26,4 +27,4 @@ These are starting points, not guarantees. Video transcoding, playlists and loss
 
 ## Horizontal scaling boundary
 
-Telegram long polling allows one active consumer per bot token. TubeForge 3 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.
+Telegram long polling allows one active consumer per bot token. TubeForge 4 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.

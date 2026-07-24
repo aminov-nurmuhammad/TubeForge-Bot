@@ -52,6 +52,16 @@ public class MediaRequest {
     @Enumerated(EnumType.STRING)
     private RequestStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "metadata_state", nullable = false)
+    private MetadataState metadataState;
+
+    @Column(name = "metadata_error_code", length = 64)
+    private String metadataErrorCode;
+
+    @Column(name = "metadata_error_message", columnDefinition = "TEXT")
+    private String metadataErrorMessage;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -74,9 +84,25 @@ public class MediaRequest {
         request.sourceUrlHash = Sha256.hex(url);
         request.sourceType = type;
         request.status = RequestStatus.INSPECTING;
+        request.metadataState = MetadataState.PENDING;
         request.createdAt = now;
         request.expiresAt = expiresAt;
         request.metadataInspectedAt = now;
+        return request;
+    }
+
+    public static MediaRequest instant(long userId, long chatId, String url, SourceType type,
+                                       String metadataJson, String sourceId, String title,
+                                       String channelName, Long durationSeconds, String thumbnailUrl,
+                                       Instant now, Instant expiresAt) {
+        MediaRequest request = inspecting(userId, chatId, url, type, now, expiresAt);
+        request.metadataJson = metadataJson;
+        request.sourceId = sourceId;
+        request.title = title;
+        request.channelName = channelName;
+        request.durationSeconds = durationSeconds;
+        request.thumbnailUrl = thumbnailUrl;
+        request.status = RequestStatus.READY;
         return request;
     }
 
@@ -92,6 +118,7 @@ public class MediaRequest {
         request.metadataInspectedAt = source.metadataInspectedAt;
         request.sourceType = source.sourceType;
         request.status = RequestStatus.READY;
+        request.metadataState = MetadataState.READY;
         return request;
     }
 
@@ -106,9 +133,24 @@ public class MediaRequest {
         this.sourceType = type;
         this.metadataInspectedAt = inspectedAt;
         this.status = RequestStatus.READY;
+        this.metadataState = MetadataState.READY;
+        this.metadataErrorCode = null;
+        this.metadataErrorMessage = null;
     }
 
     public void failed() { this.status = RequestStatus.FAILED; }
+    public void metadataPending() {
+        this.metadataState = MetadataState.PENDING;
+        this.metadataErrorCode = null;
+        this.metadataErrorMessage = null;
+    }
+    public void metadataDegraded(String code, String message, Instant inspectedAt) {
+        this.metadataState = MetadataState.DEGRADED;
+        this.metadataErrorCode = code;
+        this.metadataErrorMessage = message;
+        this.metadataInspectedAt = inspectedAt;
+        this.status = RequestStatus.READY;
+    }
     public void setPreviewMessageId(long messageId) { this.previewMessageId = messageId; }
 
     public String getId() { return id; }
@@ -125,6 +167,9 @@ public class MediaRequest {
     public String getThumbnailUrl() { return thumbnailUrl; }
     public String getMetadataJson() { return metadataJson; }
     public RequestStatus getStatus() { return status; }
+    public MetadataState getMetadataState() { return metadataState; }
+    public String getMetadataErrorCode() { return metadataErrorCode; }
+    public String getMetadataErrorMessage() { return metadataErrorMessage; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getMetadataInspectedAt() { return metadataInspectedAt; }

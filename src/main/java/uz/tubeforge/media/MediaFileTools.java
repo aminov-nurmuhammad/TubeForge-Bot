@@ -8,8 +8,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class MediaFileTools {
@@ -30,14 +32,18 @@ public class MediaFileTools {
     }
 
     public Path prepareTelegramVideo(Path input) {
-        String videoCodec = codec(input, "v:0");
-        String audioCodec = codec(input, "a:0");
+        StreamCodecs codecs = probeCodecs(input);
+        String videoCodec = codecs.video();
+        String audioCodec = codecs.audio();
         if (videoCodec.isBlank()) {
             throw new MediaProcessingException("VIDEO_STREAM_MISSING", "The downloaded file does not contain a video stream.");
         }
         if (audioCodec.isBlank()) {
             throw new MediaProcessingException("AUDIO_TRACK_MISSING",
                     "YouTube returned a video-only stream. TubeForge stopped it instead of sending a silent video; try the link again.");
+        }
+        if ("mp4".equals(extension(input)) && "h264".equals(videoCodec) && "aac".equals(audioCodec)) {
+            return input;
         }
 
         Path output = input.getParent().resolve("telegram-" + stripExtension(input.getFileName().toString()) + ".mp4");
@@ -120,13 +126,25 @@ public class MediaFileTools {
         try { return Files.size(path); } catch (IOException e) { return 0; }
     }
 
-    private String codec(Path input, String stream) {
-        List<String> command = List.of(properties.ffprobePath(), "-v", "error", "-select_streams", stream,
-                "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", input.toString());
+    private StreamCodecs probeCodecs(Path input) {
+        List<String> command = List.of(properties.ffprobePath(), "-v", "error",
+                "-show_entries", "stream=codec_name,codec_type",
+                "-of", "compact=p=0:nk=0", input.toString());
         ProcessResult result = runner.capture(command, input.getParent(), Duration.ofSeconds(30));
-        if (!result.successful()) return "";
-        return result.output().lines().map(String::strip).filter(line -> !line.isBlank()).findFirst().orElse("")
-                .toLowerCase(Locale.ROOT);
+        if (!result.successful()) return new StreamCodecs("", "");
+        Map<String, String> byType = new HashMap<>();
+        result.output().lines().forEach(line -> {
+            String type = "";
+            String codec = "";
+            for (String part : line.strip().split("\\|")) {
+                String[] field = part.split("=", 2);
+                if (field.length != 2) continue;
+                if ("codec_type".equals(field[0])) type = field[1];
+                if ("codec_name".equals(field[0])) codec = field[1];
+            }
+            if (!type.isBlank() && !codec.isBlank()) byType.putIfAbsent(type, codec.toLowerCase(Locale.ROOT));
+        });
+        return new StreamCodecs(byType.getOrDefault("video", ""), byType.getOrDefault("audio", ""));
     }
 
     private String extension(Path path) {
@@ -139,4 +157,6 @@ public class MediaFileTools {
         int dot = name.lastIndexOf('.');
         return dot < 0 ? name : name.substring(0, dot);
     }
+
+    private record StreamCodecs(String video, String audio) {}
 }

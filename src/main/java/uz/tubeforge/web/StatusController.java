@@ -13,7 +13,7 @@ public class StatusController {
         return Map.of(
                 "name", "TubeForge Bot",
                 "status", "running",
-                "version", "3.0.0",
+                "version", "4.0.0",
                 "timestamp", Instant.now().toString()
         );
     }

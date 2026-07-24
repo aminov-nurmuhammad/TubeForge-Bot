@@ -5,6 +5,7 @@ import uz.tubeforge.config.FeatureProperties;
 import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.JobType;
 import uz.tubeforge.domain.Language;
+import uz.tubeforge.domain.MetadataState;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.SubtitleOption;
 import uz.tubeforge.media.VideoFormatOption;
@@ -31,6 +32,10 @@ public class KeyboardFactory {
     }
 
     public InlineKeyboard preview(String requestId, MediaInfo info, AppUser user) {
+        return preview(requestId, info, user, MetadataState.READY);
+    }
+
+    public InlineKeyboard preview(String requestId, MediaInfo info, AppUser user, MetadataState metadataState) {
         List<List<InlineButton>> rows = new ArrayList<>();
         if (info.sourceType() == uz.tubeforge.domain.SourceType.PLAYLIST) {
             if (features.playlists()) {
@@ -46,21 +51,34 @@ public class KeyboardFactory {
                         of("qa", requestId, user.getDefaultAudioFormat().toLowerCase(java.util.Locale.ROOT))));
                 rows.add(row);
             }
-            if (features.videoDownload() || features.audioDownload()) {
+            if (metadataState == MetadataState.READY && (features.videoDownload() || features.audioDownload())) {
                 List<InlineButton> row = new ArrayList<>();
                 if (features.videoDownload()) row.add(callback("🎬 Video options", of("video", requestId)));
                 if (features.audioDownload()) row.add(callback("🎵 Audio options", of("audio", requestId)));
                 rows.add(row);
             }
-            if (features.aiStudio() || features.thumbnails() || features.subtitles()
-                    || features.transcripts() || features.clips()) {
+            if (metadataState == MetadataState.READY && (features.aiStudio() || features.thumbnails()
+                    || features.subtitles() || features.transcripts() || features.clips())) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.aiStudio()) row.add(callback("✨ AI Studio", of("ai", requestId)));
+                if (features.aiStudio() && !info.subtitles().isEmpty()) {
+                    row.add(callback("🧠 Transcript Studio", of("ai", requestId)));
+                }
                 row.add(callback("🧰 More tools", of("tools", requestId)));
                 rows.add(row);
             }
         }
-        rows.add(List.of(callback("ℹ️ Media info", of("info", requestId))));
+        if (metadataState == MetadataState.PENDING) {
+            List<InlineButton> row = new ArrayList<>();
+            if (features.thumbnails() && !info.thumbnailUrl().isBlank()) {
+                row.add(callback("🖼 Thumbnail", of("dlt", requestId)));
+            }
+            row.add(callback("⏳ Loading advanced tools", of("meta", requestId)));
+            rows.add(row);
+        } else if (metadataState == MetadataState.DEGRADED) {
+            rows.add(List.of(callback("🔄 Retry advanced analysis", of("metaretry", requestId))));
+        } else {
+            rows.add(List.of(callback("ℹ️ Media info", of("info", requestId))));
+        }
         if (info.webpageUrl() != null && info.webpageUrl().startsWith("https://")) {
             rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl())));
         }
@@ -133,10 +151,33 @@ public class KeyboardFactory {
 
     public InlineKeyboard aiStudio(String requestId) {
         return InlineKeyboard.of(List.of(
-                List.of(callback("🧠 Smart summary", of("aisel", requestId, "summary"))),
+                List.of(callback("🧠 Transcript summary", of("aisel", requestId, "summary"))),
                 List.of(callback("⏱ Chapters & key moments", of("aisel", requestId, "chapters"))),
                 List.of(callback("📚 Study notes", of("aisel", requestId, "notes"))),
                 List.of(callback("🔙 Back", of("back", requestId)))
+        ));
+    }
+
+    public InlineKeyboard metadataStatus(String requestId, MetadataState state) {
+        if (state == MetadataState.DEGRADED) {
+            return InlineKeyboard.of(List.of(
+                    List.of(callback("🔄 Retry now", of("metaretry", requestId))),
+                    List.of(callback("🔙 Back", of("back", requestId)))
+            ));
+        }
+        return InlineKeyboard.of(List.of(
+                List.of(callback("🔄 Refresh", of("meta", requestId))),
+                List.of(callback("🔙 Back", of("back", requestId)))
+        ));
+    }
+
+    public InlineKeyboard admin() {
+        return InlineKeyboard.of(List.of(
+                List.of(callback("🔄 Overview", of("adm")),
+                        callback("⚙️ Workload", of("admqueue"))),
+                List.of(callback("⚡ Cache & speed", of("admcache")),
+                        callback("🩺 Tool health", of("admhealth"))),
+                List.of(callback("❌ Close", of("close")))
         ));
     }
 
