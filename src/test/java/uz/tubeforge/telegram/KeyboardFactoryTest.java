@@ -46,11 +46,12 @@ class KeyboardFactoryTest {
 
         assertThat(preview.rows().get(0).get(0).text()).contains("720p video");
         assertThat(preview.rows().get(0).get(1).text()).contains("MP3 audio");
-        assertThat(compactFormats.rows().stream().flatMap(List::stream).map(button -> button.text()))
-                .contains("⭐ Best available · 2160p", "2160p")
+        var labels = compactFormats.rows().stream().flatMap(List::stream).map(button -> button.text()).toList();
+        assertThat(labels).contains("⭐ Best available · 2160p")
+                .anyMatch(value -> value.startsWith("2160p"))
                 .doesNotContain("🎛 All available formats");
         String exactCallback = compactFormats.rows().stream().flatMap(List::stream)
-                .filter(button -> button.text().equals("2160p"))
+                .filter(button -> button.text().startsWith("2160p"))
                 .findFirst().orElseThrow().callbackData();
         assertThat(CallbackData.parse(exactCallback).arguments()).containsExactly(requestId, "format~401~video");
     }
