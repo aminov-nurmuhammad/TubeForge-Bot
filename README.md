@@ -254,7 +254,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-4.0.0.jar
+target/tubeforge-bot-5.0.0.jar
 ```
 
 ## Architecture

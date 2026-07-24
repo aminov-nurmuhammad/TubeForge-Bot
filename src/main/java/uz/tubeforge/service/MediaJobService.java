@@ -289,7 +289,7 @@ public class MediaJobService {
             }
             job.complete(delivered.name(), delivered.totalBytes(), clock.instant());
             jobs.save(job);
-            safeEdit(job, "✅ <b>Completed</b>\n\nYour file has been delivered successfully.", null);
+            safeDelete(job);
         } catch (MediaProcessingException e) {
             completeFlightExceptionally(ownedFlight, e);
             completeInsightFlightExceptionally(ownedInsightFlight, e);
@@ -331,7 +331,7 @@ public class MediaJobService {
             job.complete(artifact.getResultFileName() == null ? "cached media" : artifact.getResultFileName(),
                     artifact.getSizeBytes() == null ? 0 : artifact.getSizeBytes(), clock.instant());
             jobs.save(job);
-            safeEdit(job, "⚡ <b>Delivered instantly</b>\n\nNo YouTube download or conversion was needed.", null);
+            safeDelete(job);
             return true;
         } catch (TelegramApiException e) {
             log.info("Cached Telegram file {} became invalid; rebuilding it", artifact.getCacheKey());
@@ -453,6 +453,16 @@ public class MediaJobService {
             if (e.getMessage() == null || !e.getMessage().contains("message is not modified")) {
                 log.debug("Could not update progress message for {}: {}", job.getId(), e.getMessage());
             }
+        }
+    }
+
+    private void safeDelete(DownloadJob job) {
+        if (job.getProgressMessageId() == null) return;
+        try {
+            telegram.deleteMessage(job.getChatId(), job.getProgressMessageId());
+        } catch (TelegramApiException e) {
+            // A user may have deleted the progress card, or Telegram may have expired it.
+            log.debug("Could not remove progress message for {}: {}", job.getId(), e.getMessage());
         }
     }
 
@@ -590,7 +600,7 @@ public class MediaJobService {
         telegram.sendLongMessage(job.getChatId(), text);
         job.complete("AI insight", content.length(), clock.instant());
         jobs.save(job);
-        safeEdit(job, cached ? "⚡ <b>Insight delivered instantly</b>" : "✅ <b>Transcript insight ready</b>", null);
+        safeDelete(job);
     }
 
     private record JobSpec(String format, ClipRange range) {}

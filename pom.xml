@@ -14,7 +14,7 @@
 
     <groupId>uz.tubeforge</groupId>
     <artifactId>tubeforge-bot</artifactId>
-    <version>4.0.0</version>
+    <version>5.0.0</version>
     <name>TubeForge Bot</name>
     <description>Self-hosted Telegram media toolkit for authorized YouTube content</description>
 

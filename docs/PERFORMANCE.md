@@ -27,4 +27,4 @@ These are starting points, not guarantees. Video transcoding, playlists and loss
 
 ## Horizontal scaling boundary
 
-Telegram long polling allows one active consumer per bot token. TubeForge 4 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.
+Telegram long polling allows one active consumer per bot token. TubeForge 5 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.

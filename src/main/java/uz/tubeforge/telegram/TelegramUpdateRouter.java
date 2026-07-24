@@ -162,15 +162,21 @@ public class TelegramUpdateRouter {
             return;
         }
         CallbackData data = CallbackData.parse(callback.data());
-        safeAnswerCallback(callback.id());
         try {
             routeCallback(callback, user, data);
+            safeAnswerCallback(callback.id());
         } catch (SecurityException e) {
-            telegram.sendMessage(callback.message().chat().id(), "🔒 This action belongs to another user.", null);
+            answerCallbackError(callback.id(), "🔒 This action belongs to another user.");
         } catch (MediaProcessingException e) {
-            telegram.sendMessage(callback.message().chat().id(), "❌ <b>Could not start</b>\n\n" + Html.escape(e.getUserMessage()), null);
+            answerCallbackError(callback.id(), "❌ " + e.getUserMessage());
         } catch (IllegalArgumentException | IllegalStateException e) {
-            telegram.sendMessage(callback.message().chat().id(), "⚠️ " + Html.escape(e.getMessage()), null);
+            answerCallbackError(callback.id(), "⚠️ " + (e.getMessage() == null ? "This action is no longer available." : e.getMessage()));
+        } catch (TelegramApiException e) {
+            answerCallbackError(callback.id(), "⚠️ Telegram could not update this message. Try again.");
+            log.debug("Telegram callback action failed {}: {}", data.action(), e.getMessage());
+        } catch (RuntimeException e) {
+            answerCallbackError(callback.id(), "⚠️ This action failed. Try again.");
+            log.error("Unexpected callback action failure {}", data.action(), e);
         }
     }
 
@@ -188,7 +194,7 @@ public class TelegramUpdateRouter {
                 MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
                 if (info == null) return;
                 editInteractive(chatId, messageId, captionMessage,
-                        "🎛 <b>All available video qualities</b>\n\nChoose the exact source quality.",
+                        "🎛 <b>All available video formats</b>\n\nChoose the exact source quality.",
                         keyboards.videoFormats(data.arg(0), info, true));
             }
             case "audio" -> {
@@ -238,10 +244,11 @@ public class TelegramUpdateRouter {
             }
             case "tools" -> {
                 MediaRequest request = ownRequest(data.arg(0), user);
-                if (metadataInfo(chatId, messageId, captionMessage, request) == null) return;
+                MediaInfo info = metadataInfo(chatId, messageId, captionMessage, request);
+                if (info == null) return;
                 editInteractive(chatId, messageId, captionMessage,
                         "🧰 <b>TubeForge tools</b>\n\nThumbnails, subtitles, transcripts and precise clips.",
-                        keyboards.toolsMenu(data.arg(0)));
+                        keyboards.toolsMenu(data.arg(0), info));
             }
             case "ai" -> {
                 MediaRequest request = ownRequest(data.arg(0), user);
@@ -675,6 +682,16 @@ public class TelegramUpdateRouter {
             telegram.answerCallback(callbackId, null, false);
         } catch (TelegramApiException e) {
             log.debug("Could not acknowledge callback {}: {}", callbackId, e.getMessage());
+        }
+    }
+
+    private void answerCallbackError(String callbackId, String text) {
+        String message = text == null || text.isBlank() ? "This action could not be completed." : text;
+        if (message.length() > 190) message = message.substring(0, 187) + "…";
+        try {
+            telegram.answerCallback(callbackId, message, true);
+        } catch (TelegramApiException e) {
+            log.debug("Could not show callback error {}: {}", callbackId, e.getMessage());
         }
     }
 }

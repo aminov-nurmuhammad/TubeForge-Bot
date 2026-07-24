@@ -50,6 +50,7 @@ class CallbackContractTest {
                 keyboards.audioFormats(id),
                 keyboards.allAudioFormats(id),
                 keyboards.toolsMenu(id),
+                keyboards.toolsMenu(id, video),
                 keyboards.aiStudio(id),
                 keyboards.audioQualities(id, "mp3"),
                 keyboards.thumbnailMenu(id),

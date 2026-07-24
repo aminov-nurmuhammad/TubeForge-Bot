@@ -87,24 +87,27 @@ public class YtDlpCommandFactory {
     }
 
     private void addVideo(List<String> command, String quality) {
+        String requestedQuality = quality == null ? "" : quality.replace('~', ':');
         String selector;
-        if ("best".equalsIgnoreCase(quality)) {
-            selector = "bv+ba/b";
-        } else if ("small".equalsIgnoreCase(quality)) {
-            selector = "worstvideo[ext=mp4]+worstaudio[ext=m4a]/worstvideo+worstaudio/"
-                    + "worst[ext=mp4]/worst";
+        if ("best".equalsIgnoreCase(requestedQuality)) {
+            selector = "bv*+ba/b";
+        } else if ("small".equalsIgnoreCase(requestedQuality)) {
+            selector = "worstvideo+worstaudio/worst";
+        } else if (requestedQuality.startsWith("format:")) {
+            selector = exactFormatSelector(requestedQuality);
         } else {
-            int height = parseHeight(quality);
-            selector = "b[height=" + height + "][ext=mp4][vcodec^=avc1][acodec!=none]/"
-                    + "b[height<=" + height + "][ext=mp4][vcodec^=avc1][acodec!=none]/"
-                    + "bv[height=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
-                    + "bv[height=" + height + "]+ba/"
-                    + "bv[height<=" + height + "][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/"
-                    + "bv[height<=" + height + "][ext=mp4]+ba[ext=m4a]/"
-                    + "bv[height<=" + height + "]+ba/b[height<=" + height + "][ext=mp4]/"
-                    + "b[height<=" + height + "]";
+            int height = parseHeight(requestedQuality.replace("height:", ""));
+            selector = "bv*[height<=" + height + "]+ba/b[height<=" + height + "]/best[height<=" + height + "]";
         }
-        command.addAll(List.of("-f", selector, "--merge-output-format", "mp4", "--remux-video", "mp4"));
+        command.addAll(List.of("-f", selector, "--merge-output-format", "mp4"));
+    }
+
+    private String exactFormatSelector(String value) {
+        String[] parts = value.split(":", 3);
+        if (parts.length < 2 || !parts[1].matches("[A-Za-z0-9._+,-]+")) return "bv*+ba/b";
+        String formatId = parts[1];
+        return parts.length == 3 && "combined".equals(parts[2])
+                ? formatId : formatId + "+ba/" + formatId;
     }
 
     private void addAudio(List<String> command, String code) {

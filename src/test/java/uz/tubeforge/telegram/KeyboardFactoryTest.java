@@ -32,12 +32,12 @@ class KeyboardFactoryTest {
     }
 
     @Test
-    void previewUsesOneTapDefaultsAndHidesExcessiveQualities() {
+    void formatPickerShowsBestAvailableQualityAndRealSourceFormats() {
         String requestId = UUID.randomUUID().toString();
         AppUser user = new AppUser(1, "demo", "Demo", null, Language.EN, Instant.now());
         MediaInfo info = new MediaInfo("id", "Title", "Channel", 60, "", "https://youtu.be/id",
                 SourceType.VIDEO, 0, "", "", 0,
-                List.of(new VideoFormatOption(2160, 1, 30, "mp4"), new VideoFormatOption(1080, 1, 30, "mp4"),
+                List.of(new VideoFormatOption(2160, 1, 30, "mp4", "format:401:video", false), new VideoFormatOption(1080, 1, 30, "mp4"),
                         new VideoFormatOption(720, 1, 30, "mp4"), new VideoFormatOption(480, 1, 30, "mp4"),
                         new VideoFormatOption(360, 1, 30, "mp4")), List.of());
 
@@ -47,7 +47,12 @@ class KeyboardFactoryTest {
         assertThat(preview.rows().get(0).get(0).text()).contains("720p video");
         assertThat(preview.rows().get(0).get(1).text()).contains("MP3 audio");
         assertThat(compactFormats.rows().stream().flatMap(List::stream).map(button -> button.text()))
-                .contains("🎛 All available qualities");
+                .contains("⭐ Best available · 2160p", "2160p")
+                .doesNotContain("🎛 All available formats");
+        String exactCallback = compactFormats.rows().stream().flatMap(List::stream)
+                .filter(button -> button.text().equals("2160p"))
+                .findFirst().orElseThrow().callbackData();
+        assertThat(CallbackData.parse(exactCallback).arguments()).containsExactly(requestId, "format~401~video");
     }
 
     @Test
@@ -62,7 +67,7 @@ class KeyboardFactoryTest {
 
         assertThat(labels).anyMatch(value -> value.contains("video"));
         assertThat(labels).anyMatch(value -> value.contains("audio"));
-        assertThat(labels).contains("⏳ Loading advanced tools");
+        assertThat(labels).contains("⏳ Details loading");
         assertThat(labels).noneMatch(value -> value.contains("Transcript Studio"));
         assertThat(labels).noneMatch(value -> value.contains("Video options"));
     }
