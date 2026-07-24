@@ -42,7 +42,10 @@ public class MediaDeliveryService {
         boolean mediaVideo = isVideo(type);
         boolean mediaAudio = isAudio(type);
 
-        if (mediaVideo && !user.isSendAsDocument()) {
+        // Validate and normalize every video, including document uploads. This prevents a
+        // video-only source from ever being delivered as a silent file when the user chose
+        // "send as document" in settings.
+        if (mediaVideo) {
             prepared = fileTools.prepareTelegramVideo(prepared);
         }
 

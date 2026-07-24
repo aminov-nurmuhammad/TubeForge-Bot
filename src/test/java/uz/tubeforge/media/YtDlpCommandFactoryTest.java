@@ -23,8 +23,19 @@ class YtDlpCommandFactoryTest {
         assertThat(command).filteredOn(url::equals).hasSize(1);
         assertThat(command).contains("--ignore-config", "--ffmpeg-location", "ffmpeg", "--no-playlist",
                 "--merge-output-format", "--concurrent-fragments", "4");
-        assertThat(String.join(" ", command)).contains("b[height=720][ext=mp4]")
-                .contains("height<=720").contains("acodec!=none");
+        assertThat(String.join(" ", command)).contains("bv*[height<=720]+ba/b[height<=720]/best[height<=720]")
+                .doesNotContain("--remux-video");
+    }
+
+    @Test
+    void usesExactFormatIdsWhenMetadataProvided() {
+        var videoOnly = factory.download(JobType.VIDEO, "format:399:video", "https://youtu.be/abc",
+                Path.of("/tmp/job"), null, 20);
+        assertThat(String.join(" ", videoOnly)).contains("-f 399+ba/399");
+
+        var combined = factory.download(JobType.VIDEO, "format:18:combined", "https://youtu.be/abc",
+                Path.of("/tmp/job"), null, 20);
+        assertThat(String.join(" ", combined)).contains("-f 18");
     }
 
     @Test

@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.0.0
+
+- Rebuilt the preview as a compact, one-screen workflow: quick actions first, formats second and useful tools behind one predictable entry point.
+- Video format buttons now carry the actual yt-dlp source format ID, so the highest available quality is visible and video-only streams are merged with audio instead of producing silent files.
+- Adopted yt-dlp's resilient best-video fallback and removed the unconditional MP4 remux that could damage otherwise playable streams.
+- Encoded format selectors safely for Telegram callback data; every generated quality button now reaches the intended router action.
+- Removed persistent "completed" progress messages: the temporary progress card disappears after delivery, leaving only the result file or transcript.
+- Converted callback failures to inline alerts, preventing duplicate error messages and keeping the chat readable.
+- Validated videos even when users choose document delivery, preventing silent video files in that mode too.
+- Added coverage for source-format selectors, 2160p visibility, callback encoding and document-delivery audio validation.
+
 ## 4.0.0
 
 - Replaced blocking link inspection with an instant one-tap preview and background metadata hydration.

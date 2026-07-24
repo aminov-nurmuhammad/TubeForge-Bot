@@ -55,6 +55,19 @@ class MediaDeliveryServiceTest {
     }
 
     @Test
+    void validatesVideoEvenWhenUserChoosesDocumentDelivery() throws Exception {
+        Path input = Files.write(directory.resolve("document-video.webm"), new byte[] {1});
+        Path normalized = Files.write(directory.resolve("document-video.mp4"), new byte[] {1, 2});
+        user.setSendAsDocument(true);
+        when(fileTools.prepareTelegramVideo(input)).thenReturn(normalized);
+
+        service.deliver(10, input, JobType.VIDEO, info, user);
+
+        verify(fileTools).prepareTelegramVideo(input);
+        verify(telegram).sendDocument(10, normalized, "✅ <b>TubeForge</b>\nTitle");
+    }
+
+    @Test
     void fallsBackToDocumentWhenTelegramRejectsAPhoto() throws Exception {
         Path photo = Files.write(directory.resolve("thumb.jpg"), new byte[] {1, 2, 3});
         when(telegram.sendPhoto(anyLong(), any(Path.class), anyString()))

@@ -57,7 +57,12 @@ public class MediaMetadataParser {
             if ("none".equals(format.path("acodec").asText("none"))) size += bestAudioBytes;
             int fps = (int) Math.round(format.path("fps").asDouble(0));
             String ext = format.path("ext").asText("mp4");
-            VideoFormatOption candidate = new VideoFormatOption(height, size, fps, ext);
+            String formatId = format.path("format_id").asText("");
+            boolean combined = !"none".equals(format.path("acodec").asText("none"));
+            String selector = formatId.isBlank()
+                    ? "height:" + height
+                    : "format:" + formatId + (combined ? ":combined" : ":video");
+            VideoFormatOption candidate = new VideoFormatOption(height, size, fps, ext, selector, combined);
             VideoFormatOption current = bestByHeight.get(height);
             if (current == null || candidate.estimatedBytes() > current.estimatedBytes()) {
                 bestByHeight.put(height, candidate);

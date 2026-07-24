@@ -53,36 +53,32 @@ public class KeyboardFactory {
             }
             if (metadataState == MetadataState.READY && (features.videoDownload() || features.audioDownload())) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.videoDownload()) row.add(callback("🎬 Video options", of("video", requestId)));
-                if (features.audioDownload()) row.add(callback("🎵 Audio options", of("audio", requestId)));
+                if (features.videoDownload()) row.add(callback("🎛 Video formats", of("video", requestId)));
+                if (features.audioDownload()) row.add(callback("🎧 Audio formats", of("audio", requestId)));
                 rows.add(row);
             }
-            if (metadataState == MetadataState.READY && (features.aiStudio() || features.thumbnails()
-                    || features.subtitles() || features.transcripts() || features.clips())) {
-                List<InlineButton> row = new ArrayList<>();
-                if (features.aiStudio() && !info.subtitles().isEmpty()) {
-                    row.add(callback("🧠 Transcript Studio", of("ai", requestId)));
-                }
-                row.add(callback("🧰 More tools", of("tools", requestId)));
-                rows.add(row);
+            if (metadataState == MetadataState.READY && (features.thumbnails() || features.subtitles()
+                    || features.transcripts() || features.clips() || features.aiStudio())) {
+                rows.add(List.of(callback("🧰 Tools", of("tools", requestId)),
+                        callback("ℹ️ Info", of("info", requestId))));
             }
         }
         if (metadataState == MetadataState.PENDING) {
             List<InlineButton> row = new ArrayList<>();
             if (features.thumbnails() && !info.thumbnailUrl().isBlank()) {
-                row.add(callback("🖼 Thumbnail", of("dlt", requestId)));
+                row.add(callback("🖼 Cover", of("dlt", requestId)));
             }
-            row.add(callback("⏳ Loading advanced tools", of("meta", requestId)));
+            row.add(callback("⏳ Details loading", of("meta", requestId)));
             rows.add(row);
         } else if (metadataState == MetadataState.DEGRADED) {
-            rows.add(List.of(callback("🔄 Retry advanced analysis", of("metaretry", requestId))));
-        } else {
-            rows.add(List.of(callback("ℹ️ Media info", of("info", requestId))));
+            rows.add(List.of(callback("🔄 Retry details", of("metaretry", requestId))));
         }
         if (info.webpageUrl() != null && info.webpageUrl().startsWith("https://")) {
-            rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl())));
+            rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl()),
+                    callback("❌ Close", of("close"))));
+        } else {
+            rows.add(List.of(callback("❌ Close", of("close"))));
         }
-        rows.add(List.of(callback("❌ Close", of("close"))));
         return InlineKeyboard.of(rows);
     }
 
@@ -92,22 +88,26 @@ public class KeyboardFactory {
 
     public InlineKeyboard videoFormats(String requestId, MediaInfo info, boolean expanded) {
         List<List<InlineButton>> rows = new ArrayList<>();
+        int highest = info.videoFormats().stream().mapToInt(VideoFormatOption::height).max().orElse(0);
+        String highestLabel = highest > 0 ? "⭐ Best available · " + highest + "p" : "⭐ Best available";
+        rows.add(List.of(callback(highestLabel, of("dlv", requestId, "best")),
+                callback("📱 Smallest file", of("dlv", requestId, "small"))));
         List<InlineButton> current = new ArrayList<>();
         List<VideoFormatOption> formats = expanded ? info.videoFormats() : recommended(info.videoFormats());
         for (VideoFormatOption format : formats) {
             String size = format.estimatedBytes() > 0 ? " • " + HumanFormat.bytes(format.estimatedBytes()) : "";
             String fps = format.fps() >= 50 ? " • " + format.fps() + "fps" : "";
-            current.add(callback(format.height() + "p" + fps + size, of("dlv", requestId, format.height())));
+            // CallbackData uses ':' as its field separator; keep the format selector one field.
+            current.add(callback(format.height() + "p" + fps + size,
+                    of("dlv", requestId, callbackFormat(format.selector()))));
             if (current.size() == 2) {
                 rows.add(List.copyOf(current));
                 current.clear();
             }
         }
         if (!current.isEmpty()) rows.add(List.copyOf(current));
-        rows.add(List.of(callback("⭐ Best quality", of("dlv", requestId, "best")),
-                callback("📱 Smallest file", of("dlv", requestId, "small"))));
         if (!expanded && formats.size() < info.videoFormats().size()) {
-            rows.add(List.of(callback("🎛 All available qualities", of("allv", requestId))));
+            rows.add(List.of(callback("🎛 All available formats", of("allv", requestId))));
         }
         rows.add(List.of(callback("🔙 Back", of("back", requestId))));
         return InlineKeyboard.of(rows);
@@ -132,10 +132,14 @@ public class KeyboardFactory {
     }
 
     public InlineKeyboard toolsMenu(String requestId) {
+        return toolsMenu(requestId, null);
+    }
+
+    public InlineKeyboard toolsMenu(String requestId, MediaInfo info) {
         List<List<InlineButton>> rows = new ArrayList<>();
         if (features.thumbnails() || features.subtitles()) {
             List<InlineButton> row = new ArrayList<>();
-            if (features.thumbnails()) row.add(callback("🖼 Thumbnails", of("thumb", requestId)));
+            if (features.thumbnails()) row.add(callback("🖼 Cover image", of("thumb", requestId)));
             if (features.subtitles()) row.add(callback("📝 Subtitles", of("subs", requestId)));
             rows.add(row);
         }
@@ -144,6 +148,9 @@ public class KeyboardFactory {
             if (features.transcripts()) row.add(callback("📄 Transcript", of("trans", requestId)));
             if (features.clips()) row.add(callback("✂️ Clip Studio", of("clip", requestId)));
             rows.add(row);
+        }
+        if (features.aiStudio() && (info == null || !info.subtitles().isEmpty())) {
+            rows.add(List.of(callback("🧠 Transcript Studio", of("ai", requestId))));
         }
         rows.add(List.of(callback("🔙 Back", of("back", requestId))));
         return InlineKeyboard.of(rows);
@@ -265,12 +272,10 @@ public class KeyboardFactory {
     }
 
     private List<VideoFormatOption> recommended(List<VideoFormatOption> formats) {
-        List<Integer> preferred = List.of(1080, 720, 480, 360);
-        List<VideoFormatOption> result = new ArrayList<>();
-        for (int height : preferred) {
-            formats.stream().filter(value -> value.height() == height).findFirst().ifPresent(result::add);
-        }
-        if (result.isEmpty()) result.addAll(formats.stream().limit(4).toList());
-        return List.copyOf(result);
+        return formats.stream().limit(5).toList();
+    }
+
+    private String callbackFormat(String selector) {
+        return selector == null ? "height_720" : selector.replace(':', '~');
     }
 }
