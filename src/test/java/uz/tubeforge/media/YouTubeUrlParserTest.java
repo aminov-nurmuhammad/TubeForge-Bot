@@ -22,12 +22,16 @@ class YouTubeUrlParserTest {
                 .isEqualTo(SourceType.SHORT);
         assertThat(parser.parse("https://youtube.com/playlist?list=PL123").orElseThrow().sourceType())
                 .isEqualTo(SourceType.PLAYLIST);
+        var live = parser.parse("https://youtube.com/live/liveId123").orElseThrow();
+        assertThat(live.sourceType()).isEqualTo(SourceType.LIVE);
+        assertThat(live.videoId()).contains("liveId123");
     }
 
     @Test
     void acceptsShortHostButRejectsLookalikesAndCredentials() {
         var shortUrl = parser.parse("https://youtu.be/dQw4w9WgXcQ?si=tracking&t=42").orElseThrow();
         assertThat(shortUrl.normalizedUrl()).isEqualTo("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42");
+        assertThat(shortUrl.videoId()).contains("dQw4w9WgXcQ");
         assertThat(parser.parse("https://youtube.com.evil.example/watch?v=x")).isEmpty();
         assertThat(parser.parse("https://user:pass@youtube.com/watch?v=x")).isEmpty();
         assertThat(parser.parse("file:///etc/passwd")).isEmpty();
@@ -40,5 +44,13 @@ class YouTubeUrlParserTest {
                 .isEqualTo("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
         assertThat(parser.parse("https://youtube.com/watch?v=abc&list=PL123").orElseThrow().sourceType())
                 .isEqualTo(SourceType.VIDEO);
+    }
+
+    @Test
+    void extractsIdsForInstantPreviews() {
+        assertThat(parser.parse("https://youtube.com/shorts/abc_123-x").orElseThrow().videoId())
+                .contains("abc_123-x");
+        assertThat(parser.parse("https://youtube.com/playlist?list=PL-fast").orElseThrow().playlistId())
+                .contains("PL-fast");
     }
 }

@@ -111,14 +111,20 @@ public class MediaJobService {
                 });
         MediaRequest request = requests.requireOwned(requestId, userId);
         AppUser user = users.require(userId);
-        boolean instantAvailable = artifactCache.cacheable(type)
-                && artifactCache.isAvailable(artifactCache.key(request, type, storedFormat, user));
+        String artifactKey = artifactCache.key(request, type, storedFormat, user);
+        boolean instantAvailable = artifactCache.cacheable(type) && artifactCache.isAvailable(artifactKey);
         if (!instantAvailable && !access.canCreateJob(userId)) {
             throw new MediaProcessingException("DAILY_LIMIT", "You have reached your processing limit for the last 24 hours.");
         }
         if (storedFormat.length() > 64) throw new IllegalArgumentException("Format selection is too long");
         DownloadJob job = DownloadJob.queued(request, type, storedFormat, clock.instant());
         jobs.save(job);
+        if (instantAvailable) {
+            Optional<MediaArtifact> artifact = artifactCache.find(artifactKey);
+            if (artifact.isPresent() && deliverImmediately(job, artifact.orElseThrow(), requests.info(request))) {
+                return job;
+            }
+        }
 
         final uz.tubeforge.telegram.model.TgMessage progress;
         try {
@@ -140,6 +146,24 @@ public class MediaJobService {
             throw new MediaProcessingException("QUEUE_FULL", "The processing queue is full. Please try again shortly.", e);
         }
         return job;
+    }
+
+    private boolean deliverImmediately(DownloadJob job, MediaArtifact artifact, MediaInfo info) {
+        try {
+            job.start(clock.instant());
+            jobs.save(job);
+            artifactCache.deliver(artifact, job.getChatId(), info);
+            job.complete(artifact.getResultFileName() == null ? "cached media" : artifact.getResultFileName(),
+                    artifact.getSizeBytes() == null ? 0 : artifact.getSizeBytes(), clock.instant());
+            jobs.save(job);
+            return true;
+        } catch (TelegramApiException e) {
+            log.info("Cached Telegram file {} became invalid; rebuilding it", artifact.getCacheKey());
+            artifactCache.invalidate(artifact.getCacheKey());
+            job.requeue();
+            jobs.save(job);
+            return false;
+        }
     }
 
     public boolean cancel(long userId, String jobId) {
@@ -355,7 +379,7 @@ public class MediaJobService {
         if (insightType != null) {
             Path subtitle = outputs.stream().filter(path -> extension(path).equals("srt")).findFirst()
                     .orElseThrow(() -> new MediaProcessingException("NO_SUBTITLES",
-                            "AI Studio needs subtitles, but none were available for this language."));
+                            "Transcript Studio needs subtitles, but none were available for this language."));
             try {
                 String srt = Files.readString(subtitle);
                 AiInsightResult result = aiStudio.generate(insightType, srt, info, user.getLanguage());
@@ -367,7 +391,7 @@ public class MediaJobService {
                         result.content().length(), null, stored);
             } catch (IOException e) {
                 throw new MediaProcessingException("AI_TRANSCRIPT_FAILED",
-                        "AI Studio could not read the subtitle transcript.", e);
+                        "Transcript Studio could not read the subtitle transcript.", e);
             }
         }
         if (job.getJobType() == JobType.PLAYLIST_AUDIO || job.getJobType() == JobType.PLAYLIST_VIDEO) {
@@ -503,7 +527,7 @@ public class MediaJobService {
             case TRANSCRIPT -> "Creating transcript";
             case CLIP_VIDEO, CLIP_AUDIO -> "Creating clip";
             case PLAYLIST_VIDEO, PLAYLIST_AUDIO -> "Processing playlist";
-            case AI_SUMMARY -> "Creating AI summary";
+            case AI_SUMMARY -> "Creating transcript summary";
             case AI_CHAPTERS -> "Finding chapters and key moments";
             case AI_STUDY_NOTES -> "Creating study notes";
         };
@@ -559,14 +583,14 @@ public class MediaJobService {
         job.delivering();
         job.progress(100);
         jobs.save(job);
-        String text = "✨ <b>TubeForge AI Studio</b>\n"
-                + (cached ? "⚡ Instant AI cache\n" : "")
+        String text = "🧠 <b>TubeForge Transcript Studio</b>\n"
+                + (cached ? "⚡ Instant insight cache\n" : "")
                 + "<i>Engine: " + uz.tubeforge.util.Html.escape(provider) + "</i>\n\n"
                 + uz.tubeforge.util.Html.escape(content);
         telegram.sendLongMessage(job.getChatId(), text);
         job.complete("AI insight", content.length(), clock.instant());
         jobs.save(job);
-        safeEdit(job, cached ? "⚡ <b>AI result delivered instantly</b>" : "✅ <b>AI result ready</b>", null);
+        safeEdit(job, cached ? "⚡ <b>Insight delivered instantly</b>" : "✅ <b>Transcript insight ready</b>", null);
     }
 
     private record JobSpec(String format, ClipRange range) {}

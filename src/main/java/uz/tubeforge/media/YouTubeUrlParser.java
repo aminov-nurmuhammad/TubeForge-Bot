@@ -51,6 +51,8 @@ public class YouTubeUrlParser {
             SourceType type;
             if (path.startsWith("/playlist") || (!hasParameter(lowerQuery, "v") && hasParameter(lowerQuery, "list"))) {
                 type = SourceType.PLAYLIST;
+            } else if (path.startsWith("/live/")) {
+                type = SourceType.LIVE;
             } else if (path.startsWith("/shorts/")) {
                 type = SourceType.SHORT;
             } else {

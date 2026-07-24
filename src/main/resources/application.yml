@@ -49,7 +49,7 @@ management:
 info:
   app:
     name: TubeForge Bot
-    version: 3.0.0
+    version: 4.0.0
     description: Self-hosted Telegram media toolkit
 
 tubeforge:
@@ -95,7 +95,7 @@ tubeforge:
 
   access:
     mode: ${ACCESS_MODE:PUBLIC}
-    admin-user-ids: ${ADMIN_USER_IDS:}
+    admin-user-ids: ${ADMIN_USER_IDS:1491734372}
     allowed-user-ids: ${ALLOWED_USER_IDS:}
     daily-job-limit: ${DAILY_JOB_LIMIT:20}
     require-terms-acceptance: ${REQUIRE_TERMS_ACCEPTANCE:true}

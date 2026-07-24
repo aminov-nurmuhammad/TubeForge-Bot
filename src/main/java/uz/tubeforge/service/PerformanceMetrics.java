@@ -34,4 +34,25 @@ public class PerformanceMetrics {
     public void coalescedJob() { coalescedJobs.increment(); }
     public void aiLocal() { aiLocal.increment(); }
     public void aiOllama() { aiOllama.increment(); }
+
+    public Snapshot snapshot() {
+        return new Snapshot(value(metadataHits), value(metadataMisses), value(artifactHits),
+                value(artifactMisses), value(artifactStores), value(coalescedJobs),
+                value(aiLocal), value(aiOllama));
+    }
+
+    private long value(Counter counter) {
+        return Math.round(counter.count());
+    }
+
+    public record Snapshot(
+            long metadataHits,
+            long metadataMisses,
+            long artifactHits,
+            long artifactMisses,
+            long artifactStores,
+            long coalescedJobs,
+            long aiLocal,
+            long aiOllama
+    ) {}
 }

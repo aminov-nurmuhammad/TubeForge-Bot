@@ -40,7 +40,7 @@ Version 3 verifies both streams before upload. Inline video is remuxed or transc
 
 TubeForge first asks Telegram to fetch the YouTube thumbnail URL. If Telegram cannot fetch it, the bot retains the complete text preview and every action button. A downloaded thumbnail job is uploaded locally and falls back to a document if Telegram rejects it as a photo.
 
-## AI Studio uses the local engine instead of Ollama
+## Transcript Studio uses the local engine instead of Ollama
 
 This is the safe fallback. Verify `AI_PROVIDER=ollama`, `OLLAMA_BASE_URL`, the model name and that Ollama can be reached from the bot process. Docker containers cannot use their own `localhost` to reach Ollama running on the Windows host; use `host.docker.internal` there.
 

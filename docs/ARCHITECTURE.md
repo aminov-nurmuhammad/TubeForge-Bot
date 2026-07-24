@@ -25,7 +25,9 @@ stateDiagram-v2
     DELIVERING --> FAILED
 ```
 
-Metadata inspection and media work use separate bounded executors, so a long download cannot freeze new-link previews. The media executor has configurable fixed concurrency and a bounded queue. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
+Link acceptance no longer waits for metadata inspection. TubeForge creates a provisional READY request from the canonical YouTube URL and deterministic video ID, displays safe one-tap actions, and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
+
+Media work uses its own bounded executor, so a long download cannot freeze new-link previews. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
 
 ## Cache and request coalescing
 
@@ -54,4 +56,4 @@ Flyway owns the schema. H2 is the zero-setup development database; the Docker de
 
 ## Delivery
 
-Video delivery first verifies both streams and normalizes codecs/container for Telegram playback. Small results are sent directly. Large video/audio is compressed toward the configured ceiling and, when necessary, segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely. Inline media failures fall back to document delivery when Telegram permits it.
+Video delivery probes both streams once. An MP4 that already contains H.264 video and AAC audio bypasses FFmpeg completely; incompatible media is normalized for Telegram playback. Small results are sent directly. Large video/audio is compressed toward the configured ceiling and, when necessary, segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely. Inline media failures fall back to document delivery when Telegram permits it.

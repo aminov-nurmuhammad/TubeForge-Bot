@@ -3,6 +3,7 @@ package uz.tubeforge.telegram;
 import org.springframework.stereotype.Component;
 import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.Language;
+import uz.tubeforge.domain.MetadataState;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.util.Html;
 import uz.tubeforge.util.HumanFormat;
@@ -57,6 +58,25 @@ public class BotMessages {
                 + "\n\nChoose a one-tap result or open advanced tools:";
     }
 
+    public String preview(MediaInfo info, MetadataState state) {
+        if (state == MetadataState.READY) return preview(info);
+        String type = switch (info.sourceType()) {
+            case SHORT -> "YouTube Short";
+            case PLAYLIST -> "YouTube Playlist";
+            default -> "YouTube Video";
+        };
+        String status = state == MetadataState.PENDING
+                ? "⏳ <b>Advanced details are loading in the background.</b>"
+                : "⚠️ <b>Advanced details are temporarily unavailable.</b>";
+        String next = state == MetadataState.PENDING
+                ? "One-tap video and audio are already ready to start."
+                : "Quick video, audio and thumbnail actions still work. You can retry the advanced analysis.";
+        return "⚡ <b>Link accepted instantly</b>\n\n"
+                + "🆔 <code>" + Html.escape(info.id()) + "</code>\n"
+                + "🔗 <b>Type:</b> " + type + "\n\n"
+                + status + "\n" + next;
+    }
+
     public String settings(AppUser user) {
         return "⚙️ <b>Settings</b>\n\n"
                 + "🌐 <b>Language:</b> " + user.getLanguage().label() + "\n"
@@ -75,6 +95,6 @@ public class BotMessages {
     }
 
     public String aiStudio() {
-        return "✨ <b>TubeForge AI Studio</b>\n\nCreate a smart summary, timestamped chapters, key moments or study notes from the video's subtitles.\n\nThe built-in local engine is free and always available. Owners can optionally connect Ollama for deeper LLM analysis.";
+        return "🧠 <b>Transcript Studio</b>\n\nTurn real subtitles into a concise summary, timestamped chapters or structured study notes.\n\nThe free built-in engine performs fast local extractive analysis. If the owner enables Ollama, the same tools automatically use a real local LLM.";
     }
 }

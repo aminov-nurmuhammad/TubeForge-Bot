@@ -152,7 +152,8 @@ public class TelegramApiClient {
                 Map.of("command", "settings", "description", "Preferences"),
                 Map.of("command", "terms", "description", "Terms of use"),
                 Map.of("command", "privacy", "description", "Privacy information"),
-                Map.of("command", "id", "description", "Show your Telegram ID")
+                Map.of("command", "id", "description", "Show your Telegram ID"),
+                Map.of("command", "admin", "description", "Owner control center")
         );
         postJson("setMyCommands", Map.of("commands", commands), Duration.ofSeconds(20));
     }

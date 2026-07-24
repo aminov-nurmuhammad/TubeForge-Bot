@@ -62,7 +62,7 @@ public class AiStudioService {
             case UZ -> "Uzbek";
             default -> "English";
         };
-        String prompt = "You are TubeForge AI Studio. " + task + " Answer in " + languageName
+        String prompt = "You are TubeForge Transcript Studio. " + task + " Answer in " + languageName
                 + ". Use plain text, short sections and bullets. Never invent facts not present in the transcript."
                 + "\n\nVideo title: " + info.title() + "\nChannel: " + info.channel()
                 + "\n\nSubtitle transcript:\n" + transcript;
