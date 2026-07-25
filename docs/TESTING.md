@@ -8,7 +8,7 @@ Run the complete test and packaging pipeline:
 
 The suite covers:
 
-- strict YouTube URL recognition and lookalike-host rejection;
+- strict YouTube and Instagram Reel URL recognition and lookalike-host rejection;
 - clip range parsing and duration limits;
 - Telegram callback encoding and byte limits;
 - subtitle-to-transcript conversion;

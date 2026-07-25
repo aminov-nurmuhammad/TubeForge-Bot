@@ -17,7 +17,7 @@ public class YtDlpCommandFactory {
         this.properties = properties;
     }
 
-    public List<String> inspect(ParsedYouTubeUrl url) {
+    public List<String> inspect(ParsedMediaUrl url) {
         List<String> command = base();
         command.addAll(List.of("--dump-single-json", "--skip-download", "--no-warnings", "--no-progress"));
         if (url.sourceType() == uz.tubeforge.domain.SourceType.PLAYLIST) {

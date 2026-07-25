@@ -6,7 +6,7 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.Optional;
 
-public record ParsedYouTubeUrl(String normalizedUrl, SourceType sourceType) {
+public record ParsedYouTubeUrl(String normalizedUrl, SourceType sourceType) implements ParsedMediaUrl {
     public Optional<String> videoId() {
         if (sourceType == SourceType.PLAYLIST) return Optional.empty();
         URI uri = URI.create(normalizedUrl);

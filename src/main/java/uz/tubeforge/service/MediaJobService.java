@@ -110,6 +110,9 @@ public class MediaJobService {
                             "This exact job is already queued or running. Use /jobs to check it.");
                 });
         MediaRequest request = requests.requireOwned(requestId, userId);
+        if (request.getSourceType() == SourceType.INSTAGRAM_REEL && !featureProperties.instagramReels()) {
+            throw new MediaProcessingException("FEATURE_DISABLED", "Instagram Reels are currently disabled by the bot owner.");
+        }
         AppUser user = users.require(userId);
         String artifactKey = artifactCache.key(request, type, storedFormat, user);
         boolean instantAvailable = artifactCache.cacheable(type) && artifactCache.isAvailable(artifactKey);
@@ -482,6 +485,20 @@ public class MediaJobService {
         }
         if (lower.contains("no subtitles") || lower.contains("there are no subtitles")) {
             return new MediaProcessingException("NO_SUBTITLES", "No subtitles are available in the selected language.");
+        }
+        if (lower.contains("instagram") && (lower.contains("login required")
+                || lower.contains("checkpoint") || lower.contains("please log in")
+                || lower.contains("log in to see"))) {
+            return new MediaProcessingException("INSTAGRAM_AUTH_REQUIRED",
+                    "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.");
+        }
+        if (lower.contains("instagram") && (lower.contains("http error 429") || lower.contains("too many requests"))) {
+            return new MediaProcessingException("INSTAGRAM_RATE_LIMITED",
+                    "Instagram temporarily rate-limited this server. Wait a few minutes and try again.");
+        }
+        if (lower.contains("instagram") && lower.contains("private")) {
+            return new MediaProcessingException("INSTAGRAM_PRIVATE",
+                    "This Instagram Reel is private or restricted.");
         }
         if (lower.contains("private video")) return new MediaProcessingException("PRIVATE_VIDEO", "This video is private.");
         if (lower.contains("sign in to confirm you’re not a bot")

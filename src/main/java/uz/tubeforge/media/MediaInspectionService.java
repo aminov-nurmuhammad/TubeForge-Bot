@@ -26,10 +26,10 @@ public class MediaInspectionService {
         this.objectMapper = objectMapper;
     }
 
-    public MediaInfo inspect(ParsedYouTubeUrl url) {
+    public MediaInfo inspect(ParsedMediaUrl url) {
         ProcessResult result = processRunner.capture(commands.inspect(url), Path.of("."), properties.metadataTimeout());
         if (result.timedOut()) {
-            throw new MediaProcessingException("METADATA_TIMEOUT", "YouTube took too long to return this video's information.");
+            throw new MediaProcessingException("METADATA_TIMEOUT", timeoutMessage(url));
         }
         if (!result.successful()) throw classify(result.output());
         try {
@@ -86,6 +86,29 @@ public class MediaInspectionService {
                     "FFmpeg could not be found. Check FFMPEG_PATH and FFPROBE_PATH.");
         }
         if (text.contains("copyright")) return new MediaProcessingException("COPYRIGHT_BLOCK", "This video is blocked by YouTube.");
-        return new MediaProcessingException("INSPECTION_FAILED", "This YouTube link could not be processed right now.");
+        return new MediaProcessingException("INSPECTION_FAILED", genericMessage(output));
+    }
+
+    private String timeoutMessage(ParsedMediaUrl url) {
+        return url.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL
+                ? "Instagram took too long to return this Reel's information."
+                : "YouTube took too long to return this video's information.";
+    }
+
+    private String genericMessage(String output) {
+        String lower = output == null ? "" : output.toLowerCase(Locale.ROOT);
+        if (lower.contains("checkpoint") || lower.contains("login required")
+                || lower.contains("please log in") || lower.contains("log in to see")) {
+            return "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.";
+        }
+        if (lower.contains("private") && lower.contains("instagram")) {
+            return "This Instagram Reel is private or restricted.";
+        }
+        if (lower.contains("instagram") && (lower.contains("http error 429") || lower.contains("too many requests"))) {
+            return "Instagram temporarily rate-limited this server. Wait a few minutes and try again.";
+        }
+        return lower.contains("instagram")
+                ? "This Instagram Reel could not be processed right now. It may be private, removed or rate-limited."
+                : "This YouTube link could not be processed right now.";
     }
 }

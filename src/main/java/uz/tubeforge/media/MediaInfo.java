@@ -25,14 +25,16 @@ public record MediaInfo(
         subtitles = subtitles == null ? List.of() : List.copyOf(subtitles);
     }
 
-    public static MediaInfo provisional(ParsedYouTubeUrl url) {
+    public static MediaInfo provisional(ParsedMediaUrl url) {
         String id = url.videoId().or(() -> url.playlistId())
                 .orElse("url-" + Sha256.hex(url.normalizedUrl()).substring(0, 24));
-        String title = url.sourceType() == SourceType.PLAYLIST ? "YouTube playlist" : "YouTube video";
+        boolean instagram = url.sourceType() == SourceType.INSTAGRAM_REEL;
+        String title = instagram ? "Instagram Reel" : (url.sourceType() == SourceType.PLAYLIST ? "YouTube playlist" : "YouTube video");
         String thumbnail = url.videoId()
+                .filter(videoId -> !instagram)
                 .map(videoId -> "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg")
                 .orElse("");
-        return new MediaInfo(id, title, "Loading details…", 0, thumbnail, url.normalizedUrl(),
+        return new MediaInfo(id, title, instagram ? "Instagram" : "Loading details…", 0, thumbnail, url.normalizedUrl(),
                 url.sourceType(), 0, "", "", 0, List.of(), List.of());
     }
 }

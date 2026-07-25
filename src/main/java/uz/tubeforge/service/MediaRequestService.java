@@ -10,7 +10,7 @@ import uz.tubeforge.domain.MediaRequest;
 import uz.tubeforge.domain.MetadataState;
 import uz.tubeforge.domain.RequestStatus;
 import uz.tubeforge.media.MediaInfo;
-import uz.tubeforge.media.ParsedYouTubeUrl;
+import uz.tubeforge.media.ParsedMediaUrl;
 import uz.tubeforge.repository.MediaRequestRepository;
 
 import java.time.Clock;
@@ -36,7 +36,7 @@ public class MediaRequestService {
     }
 
     @Transactional
-    public MediaRequest createInstant(long userId, long chatId, ParsedYouTubeUrl url) {
+    public MediaRequest createInstant(long userId, long chatId, ParsedMediaUrl url) {
         MediaInfo info = MediaInfo.provisional(url);
         try {
             MediaRequest request = MediaRequest.instant(userId, chatId, url.normalizedUrl(), url.sourceType(),
@@ -118,7 +118,7 @@ public class MediaRequestService {
     }
 
     @Transactional
-    public Optional<MediaRequest> reusable(long userId, long chatId, ParsedYouTubeUrl url) {
+    public Optional<MediaRequest> reusable(long userId, long chatId, ParsedMediaUrl url) {
         Optional<MediaRequest> source = repository.findFirstBySourceUrlHashAndStatusAndMetadataStateAndMetadataInspectedAtAfterOrderByCreatedAtDesc(
                 Sha256.hex(url.normalizedUrl()), RequestStatus.READY, MetadataState.READY,
                 clock.instant().minus(properties.cacheRetention()));

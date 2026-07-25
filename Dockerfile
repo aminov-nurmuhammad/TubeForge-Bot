@@ -18,7 +18,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=deno /deno /usr/local/bin/deno
 WORKDIR /app
-COPY --from=build /workspace/target/tubeforge-bot-5.0.0.jar /app/tubeforge.jar
+COPY --from=build /workspace/target/tubeforge-bot-6.0.0.jar /app/tubeforge.jar
 RUN mkdir -p /app/data /app/storage && chown -R tubeforge:tubeforge /app
 USER tubeforge
 EXPOSE 8080

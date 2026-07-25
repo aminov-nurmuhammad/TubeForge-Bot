@@ -25,7 +25,7 @@ stateDiagram-v2
     DELIVERING --> FAILED
 ```
 
-Link acceptance no longer waits for metadata inspection. TubeForge creates a provisional READY request from the canonical YouTube URL and deterministic video ID, displays safe one-tap actions, and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
+Link acceptance no longer waits for metadata inspection. TubeForge creates a provisional READY request from a canonical YouTube or public Instagram Reel URL and deterministic source ID, displays safe one-tap actions (including `Best Reel`), and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
 
 Media work uses its own bounded executor, so a long download cannot freeze new-link previews. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
 
@@ -45,7 +45,7 @@ Flyway owns the schema. H2 is the zero-setup development database; the Docker de
 
 ## Security boundaries
 
-- Only recognized YouTube hosts and HTTP(S) schemes are accepted.
+- Only recognized YouTube/Instagram hosts and HTTP(S) schemes are accepted.
 - URI user information is rejected.
 - Process commands never pass through a shell.
 - Job and request ownership is checked on every callback.

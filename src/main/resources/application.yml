@@ -49,7 +49,7 @@ management:
 info:
   app:
     name: TubeForge Bot
-    version: 5.0.0
+  version: 6.0.0
     description: Self-hosted Telegram media toolkit
 
 tubeforge:
@@ -109,6 +109,7 @@ tubeforge:
     clips: ${FEATURE_CLIPS:true}
     playlists: ${FEATURE_PLAYLISTS:true}
     ai-studio: ${FEATURE_AI_STUDIO:true}
+    instagram-reels: ${FEATURE_INSTAGRAM_REELS:true}
 
 logging:
   level:

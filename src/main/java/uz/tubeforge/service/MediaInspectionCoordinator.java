@@ -3,7 +3,7 @@ package uz.tubeforge.service;
 import org.springframework.stereotype.Service;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.MediaInspectionService;
-import uz.tubeforge.media.ParsedYouTubeUrl;
+import uz.tubeforge.media.ParsedMediaUrl;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -20,7 +20,7 @@ public class MediaInspectionCoordinator {
         this.metrics = metrics;
     }
 
-    public MediaInfo inspect(ParsedYouTubeUrl url) {
+    public MediaInfo inspect(ParsedMediaUrl url) {
         CompletableFuture<MediaInfo> mine = new CompletableFuture<>();
         CompletableFuture<MediaInfo> existing = inFlight.putIfAbsent(url.normalizedUrl(), mine);
         if (existing != null) {

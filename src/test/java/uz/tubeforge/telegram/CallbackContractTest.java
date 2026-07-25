@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class CallbackContractTest {
     private final KeyboardFactory keyboards = new KeyboardFactory(
-            new FeatureProperties(true, true, true, true, true, true, true, true));
+            new FeatureProperties(true, true, true, true, true, true, true, true, true));
 
     @Test
     void everyGeneratedCallbackHasARouterAction() {
