@@ -326,13 +326,18 @@ public class TelegramUpdateRouter {
         MediaRequest request = requests.createInstant(user.getTelegramUserId(), chatId, url);
         MediaInfo instantInfo = requests.info(request);
         TgMessage preview;
-        try {
-            preview = telegram.sendPhotoUrl(chatId, instantInfo.thumbnailUrl(),
-                    messages.preview(instantInfo, MetadataState.PENDING),
-                    keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
-        } catch (TelegramApiException e) {
+        if (instantInfo.thumbnailUrl() == null || instantInfo.thumbnailUrl().isBlank()) {
             preview = telegram.sendMessage(chatId, messages.preview(instantInfo, MetadataState.PENDING),
                     keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+        } else {
+            try {
+                preview = telegram.sendPhotoUrl(chatId, instantInfo.thumbnailUrl(),
+                        messages.preview(instantInfo, MetadataState.PENDING),
+                        keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+            } catch (TelegramApiException e) {
+                preview = telegram.sendMessage(chatId, messages.preview(instantInfo, MetadataState.PENDING),
+                        keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+            }
         }
         requests.attachPreviewMessage(request.getId(), preview.messageId());
         scheduleMetadata(request.getId(), url, user, chatId, preview.messageId(), preview.caption() != null);
