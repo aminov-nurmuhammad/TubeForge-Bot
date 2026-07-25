@@ -25,6 +25,8 @@ stateDiagram-v2
     DELIVERING --> FAILED
 ```
 
+Long polling receives update batches and confirms their offsets only after every accepted update has been routed. A bounded striped dispatcher keeps updates from the same chat in order while allowing independent chats to run concurrently, so one slow Telegram API response cannot serialize the entire batch and a process crash cannot silently discard queued updates.
+
 Link acceptance no longer waits for metadata inspection. TubeForge creates a provisional READY request from a canonical YouTube or public Instagram Reel URL and deterministic source ID, displays safe one-tap actions (including `Best Reel`), and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
 
 Media work uses its own bounded executor, so a long download cannot freeze new-link previews. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.

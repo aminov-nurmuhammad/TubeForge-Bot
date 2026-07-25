@@ -1,5 +1,18 @@
 # Changelog
 
+## 7.0.0
+
+- Replaced sequential Telegram routing with a bounded, crash-safe per-chat ordered dispatcher: independent users are processed concurrently, each user's commands keep their original order, and offsets are confirmed only after accepted updates are routed.
+- Added explicit Telegram 429/5xx retry handling with server-provided delay support, exponential jitter and duplicate-safe handling of unknown transport outcomes.
+- Removed redundant cache queries and progress edits from the job hot path; artifact keys are now platform-qualified so YouTube and Instagram IDs cannot collide.
+- Added short failure cooldowns and single-flight reuse for repeated bad links, preventing retry storms without blocking unrelated media.
+- Added configurable per-user link rate limiting for public deployments; configured administrators remain unrestricted.
+- Made Instagram inspection/download errors source-aware before generic YouTube classification.
+- Reduced metadata inspection retries while retaining the stronger retry policy for actual downloads.
+- Exact quality buttons now prefer Telegram-friendly H.264/MP4 streams and fall back to the same requested height when a temporary yt-dlp format ID disappears.
+- Expanded owner metrics for update dispatch, backpressure, Telegram retries and inspection cooldowns.
+- Fixed the stale application version reported by the root status endpoint.
+
 ## 6.0.0
 
 - Added public Instagram Reel URL recognition through the shared media pipeline.

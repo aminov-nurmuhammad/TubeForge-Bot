@@ -27,7 +27,7 @@ public class BotMessages {
     }
 
     public String terms() {
-        return "<b>Terms of use</b>\n\nTubeForge is for media you own, public-domain or Creative Commons media, and other content you are authorized to download or process. Do not use it to infringe copyright, bypass access controls, or obtain private, paid, DRM-protected or members-only content.\n\nBy continuing, you confirm that you have the necessary rights and will follow YouTube’s terms and applicable law.";
+        return "<b>Terms of use</b>\n\nTubeForge is for media you own, public-domain or Creative Commons media, and other content you are authorized to download or process. Do not use it to infringe copyright, bypass access controls, or obtain private, paid, DRM-protected or members-only content.\n\nBy continuing, you confirm that you have the necessary rights and will follow the source platform’s terms and applicable law.";
     }
 
     public String privacy() {

@@ -20,6 +20,10 @@ tubeforge:
     polling-enabled: false
     polling-timeout-seconds: 1
     max-upload-bytes: 50000000
+    max-concurrent-updates: 2
+    max-queued-updates: 50
+    api-max-retries: 0
+    api-retry-base-delay: PT0.01S
   media:
     yt-dlp-path: yt-dlp
     ffmpeg-path: ffmpeg
@@ -56,6 +60,7 @@ tubeforge:
     allowed-user-ids:
     daily-job-limit: 20
     require-terms-acceptance: false
+    max-links-per-minute: 12
   features:
     video-download: true
     audio-download: true
@@ -65,3 +70,4 @@ tubeforge:
     clips: true
     playlists: true
     ai-studio: true
+    instagram-reels: true

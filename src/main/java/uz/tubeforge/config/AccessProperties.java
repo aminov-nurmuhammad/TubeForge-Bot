@@ -10,13 +10,15 @@ public record AccessProperties(
         Set<Long> adminUserIds,
         Set<Long> allowedUserIds,
         int dailyJobLimit,
-        boolean requireTermsAcceptance
+        boolean requireTermsAcceptance,
+        int maxLinksPerMinute
 ) {
     public AccessProperties {
         adminUserIds = adminUserIds == null ? Set.of() : Set.copyOf(adminUserIds);
         allowedUserIds = allowedUserIds == null ? Set.of() : Set.copyOf(allowedUserIds);
         mode = mode == null ? AccessMode.PUBLIC : mode;
         dailyJobLimit = Math.max(1, dailyJobLimit);
+        maxLinksPerMinute = Math.max(1, Math.min(120, maxLinksPerMinute));
     }
 
     public enum AccessMode {

@@ -14,6 +14,7 @@ import uz.tubeforge.telegram.TelegramApiException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -27,7 +28,8 @@ class MediaDeliveryServiceTest {
     private final TelegramApiClient telegram = mock(TelegramApiClient.class);
     private final MediaFileTools fileTools = mock(MediaFileTools.class);
     private final MediaDeliveryService service = new MediaDeliveryService(
-            new TelegramProperties("test", "https://api.telegram.org", false, 1, 50_000_000),
+            new TelegramProperties("test", "https://api.telegram.org", false, 1, 50_000_000,
+                    2, 50, 0, Duration.ofMillis(10)),
             telegram, fileTools);
     private final AppUser user = new AppUser(1, "demo", "Demo", null, Language.EN, Instant.now());
     private final MediaInfo info = new MediaInfo("id", "Title", "Channel", 60, "", "",

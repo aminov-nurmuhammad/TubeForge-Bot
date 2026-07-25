@@ -9,6 +9,8 @@ import uz.tubeforge.config.TelegramProperties;
 import uz.tubeforge.telegram.model.TgUpdate;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -17,17 +19,17 @@ public class TelegramPollingService {
 
     private final TelegramProperties properties;
     private final TelegramApiClient telegram;
-    private final TelegramUpdateRouter router;
+    private final TelegramUpdateDispatcher dispatcher;
     private final AtomicBoolean polling = new AtomicBoolean();
     private volatile long nextOffset;
     private volatile long backoffUntilEpochMillis;
     private volatile int consecutiveFailures;
 
     public TelegramPollingService(TelegramProperties properties, TelegramApiClient telegram,
-                                  TelegramUpdateRouter router) {
+                                  TelegramUpdateDispatcher dispatcher) {
         this.properties = properties;
         this.telegram = telegram;
-        this.router = router;
+        this.dispatcher = dispatcher;
     }
 
     @PostConstruct
@@ -51,9 +53,19 @@ public class TelegramPollingService {
             List<TgUpdate> updates = telegram.getUpdates(nextOffset);
             consecutiveFailures = 0;
             backoffUntilEpochMillis = 0;
+            List<CompletableFuture<Void>> accepted = new ArrayList<>(updates.size());
+            long acceptedOffset = nextOffset;
             for (TgUpdate update : updates) {
-                nextOffset = Math.max(nextOffset, update.updateId() + 1);
-                router.handle(update);
+                CompletableFuture<Void> completion = dispatcher.dispatch(update);
+                if (completion == null) break;
+                accepted.add(completion);
+                acceptedOffset = Math.max(acceptedOffset, update.updateId() + 1);
+            }
+            if (!accepted.isEmpty()) {
+                // Do not confirm Telegram offsets until every accepted update in this batch
+                // has actually been routed. This keeps the fast concurrent path crash-safe.
+                CompletableFuture.allOf(accepted.toArray(CompletableFuture[]::new)).join();
+                nextOffset = acceptedOffset;
             }
         } catch (TelegramApiException e) {
             log.warn("Telegram polling error: {}", e.getMessage());

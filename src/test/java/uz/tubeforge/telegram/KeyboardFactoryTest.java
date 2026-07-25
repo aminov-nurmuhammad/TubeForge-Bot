@@ -37,7 +37,7 @@ class KeyboardFactoryTest {
         AppUser user = new AppUser(1, "demo", "Demo", null, Language.EN, Instant.now());
         MediaInfo info = new MediaInfo("id", "Title", "Channel", 60, "", "https://youtu.be/id",
                 SourceType.VIDEO, 0, "", "", 0,
-                List.of(new VideoFormatOption(2160, 1, 30, "mp4", "format:401:video", false), new VideoFormatOption(1080, 1, 30, "mp4"),
+                List.of(new VideoFormatOption(2160, 1, 30, "mp4", "format:401:video:2160", false), new VideoFormatOption(1080, 1, 30, "mp4"),
                         new VideoFormatOption(720, 1, 30, "mp4"), new VideoFormatOption(480, 1, 30, "mp4"),
                         new VideoFormatOption(360, 1, 30, "mp4")), List.of());
 
@@ -49,11 +49,12 @@ class KeyboardFactoryTest {
         var labels = compactFormats.rows().stream().flatMap(List::stream).map(button -> button.text()).toList();
         assertThat(labels).contains("⭐ Best available · 2160p")
                 .anyMatch(value -> value.startsWith("2160p"))
-                .doesNotContain("🎛 All available formats");
+                .contains("🎛 All available formats")
+                .noneMatch(value -> value.startsWith("360p"));
         String exactCallback = compactFormats.rows().stream().flatMap(List::stream)
                 .filter(button -> button.text().startsWith("2160p"))
                 .findFirst().orElseThrow().callbackData();
-        assertThat(CallbackData.parse(exactCallback).arguments()).containsExactly(requestId, "format~401~video");
+        assertThat(CallbackData.parse(exactCallback).arguments()).containsExactly(requestId, "format~401~video~2160");
     }
 
     @Test
@@ -84,5 +85,18 @@ class KeyboardFactoryTest {
 
         assertThat(button.text()).isEqualTo("⚡ Best Reel");
         assertThat(button.callbackData()).isEqualTo("qv:" + requestId + ":best");
+    }
+
+    @Test
+    void toolsHideTranscriptActionsWhenSubtitlesDoNotExist() {
+        String requestId = UUID.randomUUID().toString();
+        MediaInfo info = new MediaInfo("id", "Title", "Channel", 60, "", "",
+                SourceType.INSTAGRAM_REEL, 0, "", "", 0, List.of(), List.of());
+
+        var labels = keyboards.toolsMenu(requestId, info).rows().stream()
+                .flatMap(List::stream).map(button -> button.text()).toList();
+
+        assertThat(labels).contains("🖼 Cover image", "✂️ Clip Studio")
+                .doesNotContain("📝 Subtitles", "📄 Transcript", "🧠 Transcript Studio");
     }
 }

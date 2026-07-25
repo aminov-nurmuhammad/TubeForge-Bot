@@ -48,7 +48,7 @@ public class MediaMetadataParser {
                 bestAudioBytes = Math.max(bestAudioBytes, estimatedSize(format, durationSeconds));
             }
         }
-        Map<Integer, VideoFormatOption> bestByHeight = new TreeMap<>(Comparator.reverseOrder());
+        Map<Integer, FormatCandidate> bestByHeight = new TreeMap<>(Comparator.reverseOrder());
         for (JsonNode format : formats) {
             int height = format.path("height").asInt(0);
             String vcodec = format.path("vcodec").asText("none");
@@ -61,14 +61,27 @@ public class MediaMetadataParser {
             boolean combined = !"none".equals(format.path("acodec").asText("none"));
             String selector = formatId.isBlank()
                     ? "height:" + height
-                    : "format:" + formatId + (combined ? ":combined" : ":video");
+                    : "format:" + formatId + (combined ? ":combined:" : ":video:") + height;
             VideoFormatOption candidate = new VideoFormatOption(height, size, fps, ext, selector, combined);
-            VideoFormatOption current = bestByHeight.get(height);
-            if (current == null || candidate.estimatedBytes() > current.estimatedBytes()) {
-                bestByHeight.put(height, candidate);
+            long score = deliveryScore(format, combined, fps);
+            FormatCandidate current = bestByHeight.get(height);
+            if (current == null || score > current.score()) {
+                bestByHeight.put(height, new FormatCandidate(candidate, score));
             }
         }
-        return bestByHeight.values().stream().limit(10).toList();
+        return bestByHeight.values().stream().map(FormatCandidate::option).limit(10).toList();
+    }
+
+    private long deliveryScore(JsonNode format, boolean combined, int fps) {
+        String ext = format.path("ext").asText("").toLowerCase(Locale.ROOT);
+        String codec = format.path("vcodec").asText("").toLowerCase(Locale.ROOT);
+        long score = 0;
+        if ("mp4".equals(ext)) score += 2_000_000;
+        if (codec.startsWith("avc1") || codec.contains("h264")) score += 4_000_000;
+        if (combined) score += 1_000_000;
+        score += Math.min(120, Math.max(0, fps)) * 1_000L;
+        score += Math.round(Math.max(0, format.path("tbr").asDouble(0)));
+        return score;
     }
 
     private long estimatedSize(JsonNode format, long durationSeconds) {
@@ -121,4 +134,6 @@ public class MediaMetadataParser {
         String value = root.path(field).asText("");
         return value.isBlank() ? fallback : value;
     }
+
+    private record FormatCandidate(VideoFormatOption option, long score) {}
 }
