@@ -17,17 +17,17 @@ public class TelegramPollingService {
 
     private final TelegramProperties properties;
     private final TelegramApiClient telegram;
-    private final TelegramUpdateRouter router;
+    private final TelegramUpdateDispatcher dispatcher;
     private final AtomicBoolean polling = new AtomicBoolean();
     private volatile long nextOffset;
     private volatile long backoffUntilEpochMillis;
     private volatile int consecutiveFailures;
 
     public TelegramPollingService(TelegramProperties properties, TelegramApiClient telegram,
-                                  TelegramUpdateRouter router) {
+                                  TelegramUpdateDispatcher dispatcher) {
         this.properties = properties;
         this.telegram = telegram;
-        this.router = router;
+        this.dispatcher = dispatcher;
     }
 
     @PostConstruct
@@ -52,8 +52,8 @@ public class TelegramPollingService {
             consecutiveFailures = 0;
             backoffUntilEpochMillis = 0;
             for (TgUpdate update : updates) {
+                if (!dispatcher.dispatch(update)) break;
                 nextOffset = Math.max(nextOffset, update.updateId() + 1);
-                router.handle(update);
             }
         } catch (TelegramApiException e) {
             log.warn("Telegram polling error: {}", e.getMessage());

@@ -12,6 +12,10 @@ public class PerformanceMetrics {
     private final Counter artifactMisses;
     private final Counter artifactStores;
     private final Counter coalescedJobs;
+    private final Counter dispatchedUpdates;
+    private final Counter rejectedUpdates;
+    private final Counter telegramRetries;
+    private final Counter inspectionCooldownHits;
     private final Counter aiLocal;
     private final Counter aiOllama;
 
@@ -22,6 +26,10 @@ public class PerformanceMetrics {
         artifactMisses = registry.counter("tubeforge.cache.artifact.misses");
         artifactStores = registry.counter("tubeforge.cache.artifact.stores");
         coalescedJobs = registry.counter("tubeforge.jobs.coalesced");
+        dispatchedUpdates = registry.counter("tubeforge.telegram.updates.dispatched");
+        rejectedUpdates = registry.counter("tubeforge.telegram.updates.rejected");
+        telegramRetries = registry.counter("tubeforge.telegram.api.retries");
+        inspectionCooldownHits = registry.counter("tubeforge.inspection.cooldown.hits");
         aiLocal = registry.counter("tubeforge.ai.requests", "provider", "local");
         aiOllama = registry.counter("tubeforge.ai.requests", "provider", "ollama");
     }
@@ -32,13 +40,18 @@ public class PerformanceMetrics {
     public void artifactMiss() { artifactMisses.increment(); }
     public void artifactStore() { artifactStores.increment(); }
     public void coalescedJob() { coalescedJobs.increment(); }
+    public void dispatchedUpdate() { dispatchedUpdates.increment(); }
+    public void rejectedUpdate() { rejectedUpdates.increment(); }
+    public void telegramRetry() { telegramRetries.increment(); }
+    public void inspectionCooldownHit() { inspectionCooldownHits.increment(); }
     public void aiLocal() { aiLocal.increment(); }
     public void aiOllama() { aiOllama.increment(); }
 
     public Snapshot snapshot() {
         return new Snapshot(value(metadataHits), value(metadataMisses), value(artifactHits),
                 value(artifactMisses), value(artifactStores), value(coalescedJobs),
-                value(aiLocal), value(aiOllama));
+                value(dispatchedUpdates), value(rejectedUpdates), value(telegramRetries),
+                value(inspectionCooldownHits), value(aiLocal), value(aiOllama));
     }
 
     private long value(Counter counter) {
@@ -52,6 +65,10 @@ public class PerformanceMetrics {
             long artifactMisses,
             long artifactStores,
             long coalescedJobs,
+            long dispatchedUpdates,
+            long rejectedUpdates,
+            long telegramRetries,
+            long inspectionCooldownHits,
             long aiLocal,
             long aiOllama
     ) {}

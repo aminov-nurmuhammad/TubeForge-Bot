@@ -1,4 +1,4 @@
-# TubeForge Bot 6
+# TubeForge Bot 7
 
 TubeForge is a complete, self-hosted Telegram media toolkit built with Java 17 and Spring Boot 4. Send a supported YouTube link or a public Instagram Reel and use inline buttons to create an authorized video, audio track, thumbnail bundle, subtitle file, clean transcript, precise clip, or playlist export.
 
@@ -30,6 +30,10 @@ The application uses only free, open-source components. It does not require a pa
 - Free local transcript summaries, timestamped chapters, key moments and study notes
 - Optional Ollama models with automatic local fallback and persistent AI-result caching
 - Separate inspection and download pools, metadata reuse and duplicate-job protection
+- Per-chat ordered update dispatch: independent users run concurrently without reordering one user's button presses
+- Bounded Telegram update backpressure, explicit 429/5xx retry handling and duplicate-safe transport behavior
+- Short negative-result cooldowns that stop repeated broken links from hammering YouTube or Instagram
+- Telegram-friendly exact-format selection with automatic quality fallback when a source format disappears
 - Verified video+audio streams and zero-conversion delivery when the file is already Telegram-ready H.264/AAC MP4
 - Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
 - Actionable diagnostics for YouTube rate limits, verification prompts, FFmpeg and JavaScript runtime failures
@@ -163,11 +167,14 @@ flowchart TD
 | `DAILY_JOB_LIMIT` | `20` | Jobs per non-admin user in 24 hours |
 | `MAX_CONCURRENT_JOBS` | `2` | Media processes running simultaneously |
 | `MAX_CONCURRENT_INSPECTIONS` | `4` | Links that can be inspected simultaneously |
+| `TELEGRAM_MAX_CONCURRENT_UPDATES` | `8` | Independent Telegram chats processed concurrently |
+| `TELEGRAM_MAX_QUEUED_UPDATES` | `2000` | Bounded incoming update capacity |
 | `MAX_QUEUED_JOBS` | `500` | Bounded media queue capacity |
 | `MAX_QUEUED_INSPECTIONS` | `1000` | Bounded inspection queue capacity |
 | `MAX_VIDEO_DURATION_SECONDS` | `10800` | Maximum non-playlist duration |
 | `MAX_PLAYLIST_ITEMS` | `20` | Maximum public-playlist items |
 | `TELEGRAM_MAX_UPLOAD_BYTES` | `50000000` | Upload target for the standard Bot API |
+| `TELEGRAM_API_MAX_RETRIES` | `2` | Retries for explicit Telegram 429/5xx responses |
 | `MEDIA_CACHE_RETENTION` | `PT24H` | Local result retention before cleanup |
 | `ARTIFACT_CACHE_RETENTION` | `PT720H` | Telegram `file_id` cache retention |
 | `AI_PROVIDER` | `local` | Free built-in engine or `ollama` |
@@ -257,7 +264,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-6.0.0.jar
+target/tubeforge-bot-7.0.0.jar
 ```
 
 ## Architecture

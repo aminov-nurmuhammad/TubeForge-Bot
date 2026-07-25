@@ -29,13 +29,25 @@ class YtDlpCommandFactoryTest {
 
     @Test
     void usesExactFormatIdsWhenMetadataProvided() {
-        var videoOnly = factory.download(JobType.VIDEO, "format:399:video", "https://youtu.be/abc",
+        var videoOnly = factory.download(JobType.VIDEO, "format:399:video:1080", "https://youtu.be/abc",
                 Path.of("/tmp/job"), null, 20);
-        assertThat(String.join(" ", videoOnly)).contains("-f 399+ba/399");
+        assertThat(String.join(" ", videoOnly))
+                .contains("-f 399+ba/bv*[height<=1080]+ba/b[height<=1080]/best[height<=1080]")
+                .doesNotContain("399+ba/399");
 
-        var combined = factory.download(JobType.VIDEO, "format:18:combined", "https://youtu.be/abc",
+        var combined = factory.download(JobType.VIDEO, "format:18:combined:720", "https://youtu.be/abc",
                 Path.of("/tmp/job"), null, 20);
-        assertThat(String.join(" ", combined)).contains("-f 18");
+        assertThat(String.join(" ", combined))
+                .contains("-f 18/bv*[height<=720]+ba/b[height<=720]/best[height<=720]");
+    }
+
+    @Test
+    void inspectionUsesShortRetryBudgetAndNoFragmentWorkers() {
+        var command = factory.inspect(new ParsedYouTubeUrl(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ", uz.tubeforge.domain.SourceType.VIDEO));
+
+        assertThat(command).contains("--extractor-retries", "2", "--retries", "2")
+                .doesNotContain("--concurrent-fragments");
     }
 
     @Test

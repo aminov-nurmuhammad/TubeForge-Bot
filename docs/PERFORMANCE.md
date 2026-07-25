@@ -8,12 +8,15 @@
 4. **Single flight:** concurrent cache misses share one inspection or one media build.
 5. **Progressive MP4:** compatible combined video+audio is preferred before separate DASH streams where the requested quality allows it.
 6. **Zero conversion:** H.264/AAC MP4 passes one FFprobe call and is uploaded unchanged; only incompatible media invokes FFmpeg.
+7. **Ordered concurrent updates:** one chat keeps strict update order, while independent chats use separate bounded workers.
+8. **Failure cooldown:** repeated requests for the same recently rejected URL reuse the actionable failure instead of hammering the source.
+9. **Smart format fallback:** exact quality actions prefer Telegram-ready streams and keep the requested height if a source format ID expires.
 
 ## Capacity model
 
 Cached delivery is mostly Telegram API and database latency, so one modest instance can serve large repeat traffic. Uncached media is bounded by CPU, YouTube bandwidth, Telegram upload bandwidth and the 50 MB hosted Bot API target. No application can make a new multi-megabyte upload complete in milliseconds.
 
-Keep queues bounded. A large queue protects users from immediate rejection but does not create CPU or bandwidth. Scale concurrency only after measuring `tubeforge.cache.*`, active jobs, process duration, host load and rate-limit errors.
+Keep queues bounded. A large queue protects users from immediate rejection but does not create CPU or bandwidth. Scale concurrency only after measuring `tubeforge.cache.*`, `tubeforge.telegram.*`, active jobs, process duration, host load and rate-limit errors.
 
 ## Recommended profiles
 
@@ -27,4 +30,4 @@ These are starting points, not guarantees. Video transcoding, playlists and loss
 
 ## Horizontal scaling boundary
 
-Telegram long polling allows one active consumer per bot token. TubeForge 5 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.
+Telegram long polling allows one active consumer per bot token. TubeForge 7 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.

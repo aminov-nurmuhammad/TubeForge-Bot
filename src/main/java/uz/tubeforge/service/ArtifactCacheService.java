@@ -40,7 +40,7 @@ public class ArtifactCacheService {
     public String key(MediaRequest request, JobType type, String formatCode, AppUser user) {
         String identity = request.getSourceId() == null || request.getSourceId().isBlank()
                 ? request.getSourceUrl() : request.getSourceId();
-        String raw = identity + '|' + type + '|' + nullToEmpty(formatCode)
+        String raw = request.getSourceType() + "|" + identity + '|' + type + '|' + nullToEmpty(formatCode)
                 + "|document=" + user.isSendAsDocument() + "|compress=" + user.isAutoCompress();
         return Sha256.hex(raw);
     }
@@ -93,8 +93,8 @@ public class ArtifactCacheService {
     }
 
     public TelegramFileReference deliver(MediaArtifact artifact, long chatId, MediaInfo info) {
-        String caption = "⚡ <b>TubeForge Instant</b>\n" + Html.escape(info.title())
-                + "\n\nServed from the global cache — no download or conversion needed.";
+        String caption = "⚡ <b>TubeForge</b>\n" + Html.escape(info.title())
+                + "\n♻️ Instant cache delivery";
         TgMessage message = switch (artifact.getDeliveryKind()) {
             case VIDEO -> telegram.sendVideo(chatId, artifact.getTelegramFileId(), caption, true);
             case AUDIO -> telegram.sendAudio(chatId, artifact.getTelegramFileId(), caption, info.title(), info.channel());

@@ -18,7 +18,7 @@ public class YtDlpCommandFactory {
     }
 
     public List<String> inspect(ParsedMediaUrl url) {
-        List<String> command = base();
+        List<String> command = base(false);
         command.addAll(List.of("--dump-single-json", "--skip-download", "--no-warnings", "--no-progress"));
         if (url.sourceType() == uz.tubeforge.domain.SourceType.PLAYLIST) {
             command.addAll(List.of("--yes-playlist", "--flat-playlist", "--playlist-end",
@@ -66,17 +66,24 @@ public class YtDlpCommandFactory {
     }
 
     private List<String> base() {
+        return base(true);
+    }
+
+    private List<String> base(boolean download) {
+        int retries = download ? properties.extractorRetries() : Math.min(2, properties.extractorRetries());
         List<String> command = new ArrayList<>(List.of(
                 properties.ytDlpPath(),
                 "--ignore-config",
                 "--ffmpeg-location", properties.ffmpegPath(),
                 "--socket-timeout", Long.toString(Math.max(1, properties.socketTimeout().toSeconds())),
-                "--retries", Integer.toString(properties.extractorRetries()),
-                "--fragment-retries", Integer.toString(properties.extractorRetries()),
-                "--extractor-retries", Integer.toString(properties.extractorRetries()),
-                "--concurrent-fragments", Integer.toString(properties.concurrentFragments()),
+                "--retries", Integer.toString(retries),
+                "--fragment-retries", Integer.toString(retries),
+                "--extractor-retries", Integer.toString(retries),
                 "--no-colors"
         ));
+        if (download) {
+            command.addAll(List.of("--concurrent-fragments", Integer.toString(properties.concurrentFragments())));
+        }
         if (properties.hasCookiesFile()) {
             command.addAll(List.of("--cookies", properties.cookiesFile().toAbsolutePath().normalize().toString()));
         }
@@ -103,11 +110,15 @@ public class YtDlpCommandFactory {
     }
 
     private String exactFormatSelector(String value) {
-        String[] parts = value.split(":", 3);
+        String[] parts = value.split(":", 4);
         if (parts.length < 2 || !parts[1].matches("[A-Za-z0-9._+,-]+")) return "bv*+ba/b";
         String formatId = parts[1];
-        return parts.length == 3 && "combined".equals(parts[2])
-                ? formatId : formatId + "+ba/" + formatId;
+        int height = parts.length == 4 ? parseHeight(parts[3]) : 4320;
+        String qualityFallback = "bv*[height<=" + height + "]+ba/b[height<=" + height
+                + "]/best[height<=" + height + "]";
+        return parts.length >= 3 && "combined".equals(parts[2])
+                ? formatId + "/" + qualityFallback
+                : formatId + "+ba/" + qualityFallback;
     }
 
     private void addAudio(List<String> command, String code) {

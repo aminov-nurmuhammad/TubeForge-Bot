@@ -115,7 +115,9 @@ public class MediaJobService {
         }
         AppUser user = users.require(userId);
         String artifactKey = artifactCache.key(request, type, storedFormat, user);
-        boolean instantAvailable = artifactCache.cacheable(type) && artifactCache.isAvailable(artifactKey);
+        Optional<MediaArtifact> instantArtifact = artifactCache.cacheable(type)
+                ? artifactCache.find(artifactKey) : Optional.empty();
+        boolean instantAvailable = instantArtifact.isPresent();
         if (!instantAvailable && !access.canCreateJob(userId)) {
             throw new MediaProcessingException("DAILY_LIMIT", "You have reached your processing limit for the last 24 hours.");
         }
@@ -123,15 +125,21 @@ public class MediaJobService {
         DownloadJob job = DownloadJob.queued(request, type, storedFormat, clock.instant());
         jobs.save(job);
         if (instantAvailable) {
-            Optional<MediaArtifact> artifact = artifactCache.find(artifactKey);
-            if (artifact.isPresent() && deliverImmediately(job, artifact.orElseThrow(), requests.info(request))) {
+            if (deliverImmediately(job, instantArtifact.orElseThrow(), requests.info(request))) {
                 return job;
+            }
+            if (!access.canCreateJob(userId)) {
+                job.fail("DAILY_LIMIT", "The cached Telegram file expired and your processing limit is exhausted.",
+                        clock.instant());
+                jobs.save(job);
+                throw new MediaProcessingException("DAILY_LIMIT",
+                        "The cached file expired and you have reached your processing limit for the last 24 hours.");
             }
         }
 
         final uz.tubeforge.telegram.model.TgMessage progress;
         try {
-            progress = telegram.sendMessage(request.getChatId(), messages.processing(label(type), 0, "Queued"),
+            progress = telegram.sendMessage(request.getChatId(), messages.processing(label(type), 1, "Starting"),
                     keyboards.cancelJob(job.getId()));
         } catch (RuntimeException e) {
             job.fail("TELEGRAM_MESSAGE_FAILED", "Could not create the progress message", clock.instant());
@@ -217,7 +225,6 @@ public class MediaJobService {
         try {
             job.start(clock.instant());
             jobs.save(job);
-            safeProgress(job, 1, "Checking the instant cache");
 
             MediaRequest request = requests.requireOwned(job.getRequestId(), job.getTelegramUserId());
             MediaInfo info = requests.info(request);
@@ -261,7 +268,6 @@ public class MediaJobService {
                 }
             }
 
-            safeProgress(job, 4, "Starting media tools");
             JobSpec spec = decodeFormat(job.getFormatCode());
             Path directory = storage.jobDirectory(jobId);
             List<String> command = commands.download(job.getJobType(), spec.format(), request.getSourceUrl(),
@@ -271,7 +277,7 @@ public class MediaJobService {
 
             if (cancellationRequested.remove(jobId) || jobStatus(jobId) == JobStatus.CANCELLED) return;
             if (result.timedOut()) throw new MediaProcessingException("PROCESS_TIMEOUT", "Processing exceeded the configured time limit.");
-            if (!result.successful()) throw classifyFailure(result.output());
+            if (!result.successful()) throw classifyFailure(result.output(), request.getSourceType());
 
             job = jobs.findById(jobId).orElseThrow();
             job.delivering();
@@ -478,27 +484,34 @@ public class MediaJobService {
                 + "\n\n<code>" + code + "</code>", null);
     }
 
-    private MediaProcessingException classifyFailure(String output) {
+    private MediaProcessingException classifyFailure(String output, SourceType sourceType) {
         String lower = output == null ? "" : output.toLowerCase(Locale.ROOT);
+        boolean instagram = sourceType == SourceType.INSTAGRAM_REEL;
         if (lower.contains("requested format is not available")) {
             return new MediaProcessingException("FORMAT_UNAVAILABLE", "That format is no longer available. Please inspect the link again.");
         }
         if (lower.contains("no subtitles") || lower.contains("there are no subtitles")) {
             return new MediaProcessingException("NO_SUBTITLES", "No subtitles are available in the selected language.");
         }
-        if (lower.contains("instagram") && (lower.contains("login required")
+        if (instagram && (lower.contains("login required")
                 || lower.contains("checkpoint") || lower.contains("please log in")
-                || lower.contains("log in to see"))) {
+                || lower.contains("log in to see") || lower.contains("challenge required")
+                || lower.contains("use --cookies"))) {
             return new MediaProcessingException("INSTAGRAM_AUTH_REQUIRED",
                     "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.");
         }
-        if (lower.contains("instagram") && (lower.contains("http error 429") || lower.contains("too many requests"))) {
+        if (instagram && (lower.contains("http error 429") || lower.contains("too many requests"))) {
             return new MediaProcessingException("INSTAGRAM_RATE_LIMITED",
                     "Instagram temporarily rate-limited this server. Wait a few minutes and try again.");
         }
-        if (lower.contains("instagram") && lower.contains("private")) {
+        if (instagram && lower.contains("private")) {
             return new MediaProcessingException("INSTAGRAM_PRIVATE",
                     "This Instagram Reel is private or restricted.");
+        }
+        if (instagram && (lower.contains("not available") || lower.contains("not found")
+                || lower.contains("has been removed"))) {
+            return new MediaProcessingException("INSTAGRAM_UNAVAILABLE",
+                    "This Instagram Reel is unavailable, removed or restricted.");
         }
         if (lower.contains("private video")) return new MediaProcessingException("PRIVATE_VIDEO", "This video is private.");
         if (lower.contains("sign in to confirm you’re not a bot")

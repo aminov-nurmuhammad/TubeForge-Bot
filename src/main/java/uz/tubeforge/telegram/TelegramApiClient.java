@@ -10,7 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import uz.tubeforge.config.TelegramProperties;
+import uz.tubeforge.service.PerformanceMetrics;
 import uz.tubeforge.telegram.model.InlineKeyboard;
 import uz.tubeforge.telegram.model.TgMessage;
 import uz.tubeforge.telegram.model.TgUpdate;
@@ -19,19 +23,26 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.LockSupport;
+import java.util.function.Supplier;
 
 @Component
 public class TelegramApiClient {
+    private static final Logger log = LoggerFactory.getLogger(TelegramApiClient.class);
     private static final TypeReference<List<TgUpdate>> UPDATE_LIST = new TypeReference<>() {};
 
     private final TelegramProperties properties;
     private final ObjectMapper objectMapper;
     private final WebClient webClient;
+    private final PerformanceMetrics metrics;
 
-    public TelegramApiClient(TelegramProperties properties, ObjectMapper objectMapper, WebClient.Builder builder) {
+    public TelegramApiClient(TelegramProperties properties, ObjectMapper objectMapper, WebClient.Builder builder,
+                             PerformanceMetrics metrics) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.webClient = builder.baseUrl(properties.botApiUrl()).build();
+        this.metrics = metrics;
     }
 
     public List<TgUpdate> getUpdates(long offset) {
@@ -160,24 +171,26 @@ public class TelegramApiClient {
 
     private TgMessage upload(String method, String field, long chatId, Path file, String caption,
                              Map<String, String> extras) {
-        MultipartBodyBuilder multipart = new MultipartBodyBuilder();
-        multipart.part("chat_id", Long.toString(chatId));
-        multipart.part(field, new FileSystemResource(file));
-        multipart.part("caption", caption == null ? "" : caption);
-        multipart.part("parse_mode", "HTML");
-        extras.forEach((key, value) -> {
-            if (value != null && !value.isBlank()) multipart.part(key, value);
+        JsonNode result = withTelegramRetry(method, () -> {
+            MultipartBodyBuilder multipart = new MultipartBodyBuilder();
+            multipart.part("chat_id", Long.toString(chatId));
+            multipart.part(field, new FileSystemResource(file));
+            multipart.part("caption", caption == null ? "" : caption);
+            multipart.part("parse_mode", "HTML");
+            extras.forEach((key, value) -> {
+                if (value != null && !value.isBlank()) multipart.part(key, value);
+            });
+            JsonNode response = webClient.post()
+                    .uri("/" + method)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(multipart.build()))
+                    .exchangeToMono(this::responseBody)
+                    .timeout(Duration.ofHours(2))
+                    .onErrorMap(this::mapTransportError)
+                    .block();
+            return requireResult(response);
         });
-
-        JsonNode response = webClient.post()
-                .uri("/" + method)
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(BodyInserters.fromMultipartData(multipart.build()))
-                .exchangeToMono(clientResponse -> clientResponse.bodyToMono(JsonNode.class))
-                .timeout(Duration.ofHours(2))
-                .onErrorMap(this::mapTransportError)
-                .block();
-        return objectMapper.convertValue(requireResult(response), TgMessage.class);
+        return objectMapper.convertValue(result, TgMessage.class);
     }
 
     private TgMessage sendFileId(String method, String field, long chatId, String fileId, String caption,
@@ -192,15 +205,70 @@ public class TelegramApiClient {
     }
 
     private JsonNode postJson(String method, Object body, Duration timeout) {
-        JsonNode response = webClient.post()
-                .uri("/" + method)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .exchangeToMono(clientResponse -> clientResponse.bodyToMono(JsonNode.class))
-                .timeout(timeout)
-                .onErrorMap(this::mapTransportError)
-                .block();
-        return requireResult(response);
+        return withTelegramRetry(method, () -> {
+            JsonNode response = webClient.post()
+                    .uri("/" + method)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .exchangeToMono(this::responseBody)
+                    .timeout(timeout)
+                    .onErrorMap(this::mapTransportError)
+                    .block();
+            return requireResult(response);
+        });
+    }
+
+    private Mono<JsonNode> responseBody(org.springframework.web.reactive.function.client.ClientResponse response) {
+        int status = response.statusCode().value();
+        return response.bodyToMono(JsonNode.class)
+                .onErrorMap(error -> new TelegramApiException(status,
+                        "Telegram returned an unreadable HTTP " + status + " response"))
+                .switchIfEmpty(Mono.error(new TelegramApiException(status,
+                        "Telegram returned an empty HTTP " + status + " response")));
+    }
+
+    private JsonNode withTelegramRetry(String method, Supplier<JsonNode> request) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return request.get();
+            } catch (TelegramApiException error) {
+                if (!retryable(error) || attempt >= properties.apiMaxRetries()) throw error;
+                Duration delay = retryDelay(error, attempt);
+                metrics.telegramRetry();
+                log.debug("Retrying Telegram method {} after {} ms (HTTP/API {})",
+                        method, delay.toMillis(), error.getErrorCode());
+                waitFor(delay);
+            }
+        }
+    }
+
+    private boolean retryable(TelegramApiException error) {
+        int code = error.getErrorCode();
+        // Do not retry an unknown transport outcome: Telegram may already have accepted
+        // a send operation and a blind retry could duplicate the user's file/message.
+        return code == 429 || code >= 500;
+    }
+
+    private Duration retryDelay(TelegramApiException error, int attempt) {
+        if (error.getRetryAfterSeconds() > 0) {
+            return Duration.ofSeconds(Math.min(60, error.getRetryAfterSeconds()));
+        }
+        long baseMillis = Math.max(10, properties.apiRetryBaseDelay().toMillis());
+        long exponential = Math.min(30_000, baseMillis * (1L << Math.min(10, attempt)));
+        long jitter = ThreadLocalRandom.current().nextLong(Math.max(1, exponential / 4 + 1));
+        return Duration.ofMillis(Math.min(30_000, exponential + jitter));
+    }
+
+    private void waitFor(Duration delay) {
+        if (Thread.currentThread().isInterrupted()) {
+            Thread.currentThread().interrupt();
+            throw new TelegramApiException(0, "Telegram retry was interrupted");
+        }
+        LockSupport.parkNanos(delay.toNanos());
+        if (Thread.interrupted()) {
+            Thread.currentThread().interrupt();
+            throw new TelegramApiException(0, "Telegram retry was interrupted");
+        }
     }
 
     private JsonNode requireResult(JsonNode response) {

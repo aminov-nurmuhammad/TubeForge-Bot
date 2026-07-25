@@ -56,6 +56,26 @@ public class MediaInspectionService {
 
     private MediaProcessingException classify(String output, ParsedMediaUrl url) {
         String text = output == null ? "" : output.toLowerCase(Locale.ROOT);
+        boolean instagram = url.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL;
+        if (instagram && (text.contains("login required") || text.contains("checkpoint")
+                || text.contains("please log in") || text.contains("log in to see")
+                || text.contains("challenge required") || text.contains("use --cookies"))) {
+            return new MediaProcessingException("INSTAGRAM_AUTH_REQUIRED",
+                    "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.");
+        }
+        if (instagram && (text.contains("http error 429") || text.contains("too many requests"))) {
+            return new MediaProcessingException("INSTAGRAM_RATE_LIMITED",
+                    "Instagram temporarily rate-limited this server. Wait a few minutes and try again.");
+        }
+        if (instagram && text.contains("private")) {
+            return new MediaProcessingException("INSTAGRAM_PRIVATE",
+                    "This Instagram Reel is private or restricted.");
+        }
+        if (instagram && (text.contains("not available") || text.contains("not found")
+                || text.contains("has been removed"))) {
+            return new MediaProcessingException("INSTAGRAM_UNAVAILABLE",
+                    "This Instagram Reel is unavailable, removed or restricted.");
+        }
         if (text.contains("private video")) return new MediaProcessingException("PRIVATE_VIDEO", "This video is private.");
         if (text.contains("members-only") || text.contains("members only")) {
             return new MediaProcessingException("MEMBERS_ONLY", "This is members-only content and cannot be processed.");
@@ -96,18 +116,7 @@ public class MediaInspectionService {
     }
 
     private String genericMessage(String output, ParsedMediaUrl url) {
-        String lower = output == null ? "" : output.toLowerCase(Locale.ROOT);
         boolean instagram = url.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL;
-        if (instagram && (lower.contains("checkpoint") || lower.contains("login required")
-                || lower.contains("please log in") || lower.contains("log in to see"))) {
-            return "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.";
-        }
-        if (instagram && lower.contains("private")) {
-            return "This Instagram Reel is private or restricted.";
-        }
-        if (instagram && (lower.contains("http error 429") || lower.contains("too many requests"))) {
-            return "Instagram temporarily rate-limited this server. Wait a few minutes and try again.";
-        }
         return instagram
                 ? "This Instagram Reel could not be processed right now. It may be private, removed or rate-limited."
                 : "This YouTube link could not be processed right now.";

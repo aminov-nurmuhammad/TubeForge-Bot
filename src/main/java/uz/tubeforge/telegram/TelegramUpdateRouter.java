@@ -225,10 +225,11 @@ public class TelegramUpdateRouter {
                 }
             }
             case "thumb" -> {
-                ownRequest(data.arg(0), user);
+                MediaRequest request = ownRequest(data.arg(0), user);
                 editInteractive(chatId, messageId, captionMessage,
-                        "🖼 <b>Thumbnail tools</b>\n\nChoose the best image or receive every available thumbnail.",
-                        keyboards.thumbnailMenu(data.arg(0)));
+                        "🖼 <b>Cover image</b>\n\nGet the best image available for this media.",
+                        keyboards.thumbnailMenu(data.arg(0),
+                                request.getSourceType() != SourceType.INSTAGRAM_REEL));
             }
             case "subs" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dls", "Subtitles");
             case "trans" -> showSubtitleMenu(chatId, messageId, captionMessage, user, data.arg(0), "dtr", "Transcript language");
@@ -597,7 +598,7 @@ public class TelegramUpdateRouter {
         }
         try {
             telegram.sendPhotoUrl(request.getChatId(), info.thumbnailUrl(),
-                    "🖼 <b>" + Html.escape(info.title()) + "</b>\n\nBest available YouTube thumbnail.", null);
+                    "🖼 <b>" + Html.escape(info.title()) + "</b>\n\nBest available cover image.", null);
         } catch (TelegramApiException e) {
             jobs.queue(user.getTelegramUserId(), requestId, JobType.THUMBNAIL, "jpg", null);
         }
@@ -635,7 +636,8 @@ public class TelegramUpdateRouter {
                 + "🛠 Running: <b>" + running + "</b>\n"
                 + "📤 Delivering: <b>" + delivering + "</b>\n"
                 + "❌ Failed (all time): <b>" + failed + "</b>\n"
-                + "🔎 Metadata workers active: <b>" + inspection.activeInspections() + "</b>";
+                + "🔎 Metadata workers active: <b>" + inspection.activeInspections() + "</b>\n"
+                + "🧯 Links in retry cooldown: <b>" + inspection.coolingDownLinks() + "</b>";
     }
 
     private String adminCache() {
@@ -647,6 +649,10 @@ public class TelegramUpdateRouter {
                 + "Metadata hits / misses: <b>" + value.metadataHits() + " / " + value.metadataMisses() + "</b>\n"
                 + "Artifact hits / misses: <b>" + value.artifactHits() + " / " + value.artifactMisses() + "</b>\n"
                 + "Coalesced duplicate work: <b>" + value.coalescedJobs() + "</b>\n"
+                + "Telegram updates / rejected: <b>" + value.dispatchedUpdates() + " / "
+                + value.rejectedUpdates() + "</b>\n"
+                + "Telegram API retries: <b>" + value.telegramRetries() + "</b>\n"
+                + "Inspection cooldown hits: <b>" + value.inspectionCooldownHits() + "</b>\n"
                 + "Local / Ollama analysis: <b>" + value.aiLocal() + " / " + value.aiOllama() + "</b>";
     }
 
