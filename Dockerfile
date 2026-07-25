@@ -8,7 +8,7 @@ RUN mvn -B -q clean package
 
 FROM denoland/deno:bin-2.9.3 AS deno
 
-FROM eclipse-temurin:17-jre-jammy AS runtime
+FROM eclipse-temurin:25-jre-jammy AS runtime
 ARG YT_DLP_VERSION=2026.7.4
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
