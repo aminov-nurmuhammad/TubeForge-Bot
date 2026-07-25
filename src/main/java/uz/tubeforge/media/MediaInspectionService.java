@@ -99,7 +99,7 @@ public class MediaInspectionService {
         String lower = output == null ? "" : output.toLowerCase(Locale.ROOT);
         boolean instagram = url.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL;
         if (instagram && (lower.contains("checkpoint") || lower.contains("login required")
-                || lower.contains("please log in") || lower.contains("log in to see")) {
+                || lower.contains("please log in") || lower.contains("log in to see"))) {
             return "Instagram requires a public session for this Reel. Private or login-only Reels are not supported.";
         }
         if (instagram && lower.contains("private")) {
