@@ -43,7 +43,7 @@ public class TelegramUpdateRouter {
     private final MediaRequestService requests;
     private final MediaInspectionCoordinator inspection;
     private final MediaJobService jobs;
-    private final YouTubeUrlParser urlParser;
+    private final MediaUrlParser urlParser;
     private final BotMessages messages;
     private final KeyboardFactory keyboards;
     private final FeatureProperties features;
@@ -59,7 +59,7 @@ public class TelegramUpdateRouter {
     public TelegramUpdateRouter(TelegramApiClient telegram, UserService users, AccessService access,
                                 SessionService sessions, MediaRequestService requests,
                                 MediaInspectionCoordinator inspection, MediaJobService jobs,
-                                YouTubeUrlParser urlParser, BotMessages messages, KeyboardFactory keyboards,
+                                MediaUrlParser urlParser, BotMessages messages, KeyboardFactory keyboards,
                                 FeatureProperties features, AppUserRepository userRepository,
                                 DownloadJobRepository jobRepository, ArtifactCacheService artifactCache,
                                 AiInsightCacheService insightCache, PerformanceMetrics metrics,
@@ -121,8 +121,12 @@ public class TelegramUpdateRouter {
             return;
         }
 
-        Optional<ParsedYouTubeUrl> url = urlParser.find(text);
+        Optional<ParsedMediaUrl> url = urlParser.find(text);
         if (url.isPresent()) {
+            if (url.get().sourceType() == SourceType.INSTAGRAM_REEL && !features.instagramReels()) {
+                telegram.sendMessage(message.chat().id(), "Instagram Reels are temporarily disabled by the bot owner.", null);
+                return;
+            }
             if (!access.hasAcceptedTerms(user)) {
                 sessions.awaitTerms(user.getTelegramUserId(), url.get().normalizedUrl());
                 telegram.sendMessage(message.chat().id(), messages.terms(), keyboards.acceptTerms());
@@ -132,7 +136,7 @@ public class TelegramUpdateRouter {
             return;
         }
 
-        telegram.sendMessage(message.chat().id(), "🔗 <b>Send me a YouTube link</b>\n\nI’ll detect it automatically and show every available tool. Use /help for details.", null);
+        telegram.sendMessage(message.chat().id(), "🔗 <b>Send a YouTube or Instagram Reel link</b>\n\nI’ll detect it automatically and show the fastest available actions. Use /help for details.", null);
     }
 
     private void handleCommand(TgMessage message, AppUser user, String command) {
@@ -312,7 +316,7 @@ public class TelegramUpdateRouter {
         }
     }
 
-    private void inspectLink(AppUser user, long chatId, ParsedYouTubeUrl url) {
+    private void inspectLink(AppUser user, long chatId, ParsedMediaUrl url) {
         Optional<MediaRequest> cached = requests.reusable(user.getTelegramUserId(), chatId, url);
         if (cached.isPresent()) {
             MediaRequest request = cached.orElseThrow();
@@ -322,13 +326,18 @@ public class TelegramUpdateRouter {
         MediaRequest request = requests.createInstant(user.getTelegramUserId(), chatId, url);
         MediaInfo instantInfo = requests.info(request);
         TgMessage preview;
-        try {
-            preview = telegram.sendPhotoUrl(chatId, instantInfo.thumbnailUrl(),
-                    messages.preview(instantInfo, MetadataState.PENDING),
-                    keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
-        } catch (TelegramApiException e) {
+        if (instantInfo.thumbnailUrl() == null || instantInfo.thumbnailUrl().isBlank()) {
             preview = telegram.sendMessage(chatId, messages.preview(instantInfo, MetadataState.PENDING),
                     keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+        } else {
+            try {
+                preview = telegram.sendPhotoUrl(chatId, instantInfo.thumbnailUrl(),
+                        messages.preview(instantInfo, MetadataState.PENDING),
+                        keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+            } catch (TelegramApiException e) {
+                preview = telegram.sendMessage(chatId, messages.preview(instantInfo, MetadataState.PENDING),
+                        keyboards.preview(request.getId(), instantInfo, user, MetadataState.PENDING));
+            }
         }
         requests.attachPreviewMessage(request.getId(), preview.messageId());
         scheduleMetadata(request.getId(), url, user, chatId, preview.messageId(), preview.caption() != null);
@@ -351,7 +360,7 @@ public class TelegramUpdateRouter {
 
     private void acceptTerms(long chatId, long messageId, AppUser user) {
         users.acceptTerms(user.getTelegramUserId());
-        telegram.editMessage(chatId, messageId, "✅ <b>Terms accepted</b>\n\nTubeForge is ready. Send any YouTube link.", null);
+        telegram.editMessage(chatId, messageId, "✅ <b>Terms accepted</b>\n\nTubeForge is ready. Send a YouTube or Instagram Reel link.", null);
         sessions.active(user.getTelegramUserId()).filter(s -> s.getState() == SessionState.AWAITING_TERMS).ifPresent(session -> {
             urlParser.parse(session.getPayload()).ifPresent(url -> inspectLink(users.require(user.getTelegramUserId()), chatId, url));
             sessions.clear(user.getTelegramUserId());
@@ -456,7 +465,7 @@ public class TelegramUpdateRouter {
         List<MediaRequest> history = requests.recent(user.getTelegramUserId(), 8).stream()
                 .filter(requests::isUsable).toList();
         if (history.isEmpty()) {
-            telegram.sendMessage(chatId, "🕘 <b>No history yet</b>\n\nSend your first YouTube link.", null);
+            telegram.sendMessage(chatId, "🕘 <b>No history yet</b>\n\nSend your first YouTube or Instagram Reel link.", null);
             return;
         }
         List<List<InlineButton>> rows = new ArrayList<>();
@@ -500,7 +509,7 @@ public class TelegramUpdateRouter {
         telegram.sendMessage(chatId, adminOverview(), keyboards.admin());
     }
 
-    private void scheduleMetadata(String requestId, ParsedYouTubeUrl url, AppUser user, long chatId,
+    private void scheduleMetadata(String requestId, ParsedMediaUrl url, AppUser user, long chatId,
                                   long messageId, boolean captionMessage) {
         try {
             executor.execute(() -> {
@@ -570,8 +579,8 @@ public class TelegramUpdateRouter {
     private void retryMetadata(long chatId, long messageId, boolean captionMessage,
                                AppUser user, String requestId) {
         MediaRequest request = ownRequest(requestId, user);
-        ParsedYouTubeUrl url = urlParser.parse(request.getSourceUrl())
-                .orElseThrow(() -> new IllegalStateException("The stored YouTube link is invalid"));
+        ParsedMediaUrl url = urlParser.parse(request.getSourceUrl())
+                .orElseThrow(() -> new IllegalStateException("The stored media link is invalid"));
         requests.markMetadataPending(requestId);
         MediaInfo info = requests.info(request);
         editInteractive(chatId, messageId, captionMessage, messages.preview(info, MetadataState.PENDING),
@@ -610,6 +619,7 @@ public class TelegramUpdateRouter {
                 + "📝 Subtitles: " + on(features.subtitles()) + "\n"
                 + "✂️ Clips: " + on(features.clips()) + "\n"
                 + "📚 Playlists: " + on(features.playlists()) + "\n"
+                + "📸 Instagram Reels: " + on(features.instagramReels()) + "\n"
                 + "🧠 Transcript Studio: " + on(features.aiStudio()) + "\n"
                 + "🤖 Engine: <code>" + Html.escape(aiProperties.ollama()
                 ? "Ollama / " + aiProperties.model() : "local extractive") + "</code>";

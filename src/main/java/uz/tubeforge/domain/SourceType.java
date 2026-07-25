@@ -4,5 +4,6 @@ public enum SourceType {
     VIDEO,
     SHORT,
     PLAYLIST,
-    LIVE
+    LIVE,
+    INSTAGRAM_REEL
 }

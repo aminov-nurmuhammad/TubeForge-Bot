@@ -12,17 +12,17 @@ import uz.tubeforge.util.HumanFormat;
 public class BotMessages {
     public String welcome(AppUser user) {
         return switch (user.getLanguage()) {
-            case RU -> "<b>Добро пожаловать в TubeForge</b> ⚡\n\nОтправьте ссылку YouTube. Я проанализирую её и покажу доступные видео, аудио, превью, субтитры, расшифровки и клипы.\n\nВсе инструменты работают прямо через кнопки под сообщением.";
-            case UZ -> "<b>TubeForge’ga xush kelibsiz</b> ⚡\n\nYouTube havolasini yuboring. Men uni tekshirib, video, audio, prevyu, subtitr, transkript va klip variantlarini ko‘rsataman.\n\nBarcha amallar xabar ostidagi tugmalar orqali ishlaydi.";
-            default -> "<b>Welcome to TubeForge</b> ⚡\n\nSend a YouTube link. I’ll inspect it and show the available video, audio, thumbnail, subtitle, transcript and clip tools.\n\nEverything works through the buttons beneath each message.";
+            case RU -> "<b>Добро пожаловать в TubeForge</b> ⚡\n\nОтправьте ссылку YouTube или публичного Instagram Reel. Я быстро покажу лучшие доступные действия: видео, аудио, обложку и дополнительные инструменты.\n\nВсе инструменты работают прямо через кнопки под сообщением.";
+            case UZ -> "<b>TubeForge’ga xush kelibsiz</b> ⚡\n\nYouTube yoki ochiq Instagram Reel havolasini yuboring. Men eng yaxshi video, audio, prevyu va boshqa amallarni tez ko‘rsataman.\n\nBarcha amallar xabar ostidagi tugmalar orqali ishlaydi.";
+            default -> "<b>Welcome to TubeForge</b> ⚡\n\nSend a YouTube or public Instagram Reel link. I’ll quickly show the best available video, audio, cover and useful tools.\n\nEverything works through the buttons beneath each message.";
         };
     }
 
     public String help(Language language) {
         return switch (language) {
-            case RU -> "<b>Как пользоваться TubeForge</b>\n\n1. Отправьте ссылку YouTube.\n2. Выберите действие кнопкой под сообщением.\n3. Выберите качество или формат.\n4. Дождитесь обработки и получите файл.\n\nПоддерживаются обычные видео, Shorts и публичные плейлисты. Команда /jobs показывает обработку, /history — недавние ссылки, /settings — настройки.";
-            case UZ -> "<b>TubeForge’dan foydalanish</b>\n\n1. YouTube havolasini yuboring.\n2. Xabar ostidagi amalni tanlang.\n3. Sifat yoki formatni tanlang.\n4. Tayyor faylni kuting.\n\nOddiy videolar, Shorts va ochiq pleylistlar qo‘llanadi. /jobs — jarayonlar, /history — tarix, /settings — sozlamalar.";
-            default -> "<b>How to use TubeForge</b>\n\n1. Send a YouTube link.\n2. Choose an action beneath the preview.\n3. Select a quality or format.\n4. Wait for processing and receive the result.\n\nNormal videos, Shorts and public playlists are supported. Use /jobs for progress, /history for recent links and /settings for preferences.";
+            case RU -> "<b>Как пользоваться TubeForge</b>\n\n1. Отправьте ссылку YouTube или публичного Instagram Reel.\n2. Нажмите быстрое действие под превью — для Reel первая кнопка сразу выбирает максимум качества.\n3. При необходимости выберите точный формат.\n4. Получите файл; повторные запросы используют кэш.\n\nКоманды: /jobs — обработка, /history — ссылки, /settings — настройки.";
+            case UZ -> "<b>TubeForge’dan foydalanish</b>\n\n1. YouTube yoki ochiq Instagram Reel havolasini yuboring.\n2. Prevyu ostidagi tezkor amalni bosing — Reel uchun birinchi tugma eng yuqori sifatni tanlaydi.\n3. Kerak bo‘lsa aniq formatni tanlang.\n4. Faylni oling; takroriy so‘rovlar keshdan foydalanadi.\n\nBuyruqlar: /jobs, /history, /settings.";
+            default -> "<b>How to use TubeForge</b>\n\n1. Send a YouTube or public Instagram Reel link.\n2. Tap the quick action beneath the preview — Reel’s first button requests the best available quality.\n3. Choose an exact format when needed.\n4. Receive the file; repeated requests use the shared cache.\n\nUse /jobs for progress, /history for recent links and /settings for preferences.";
         };
     }
 
@@ -35,7 +35,7 @@ public class BotMessages {
     }
 
     public String inspecting() {
-        return "🔎 <b>Inspecting your YouTube link…</b>\n\nChecking formats, audio, thumbnails and subtitles.";
+        return "🔎 <b>Inspecting your media link…</b>\n\nChecking formats, audio, thumbnails and subtitles.";
     }
 
     public String preview(MediaInfo info) {
@@ -43,6 +43,7 @@ public class BotMessages {
             case SHORT -> "YouTube Short";
             case PLAYLIST -> "YouTube Playlist";
             case LIVE -> "Livestream";
+            case INSTAGRAM_REEL -> "Instagram Reel";
             default -> "YouTube Video";
         };
         String extra = switch (info.sourceType()) {
@@ -63,6 +64,7 @@ public class BotMessages {
         String type = switch (info.sourceType()) {
             case SHORT -> "YouTube Short";
             case PLAYLIST -> "YouTube Playlist";
+            case INSTAGRAM_REEL -> "Instagram Reel";
             default -> "YouTube Video";
         };
         String status = state == MetadataState.PENDING

@@ -6,6 +6,7 @@ import uz.tubeforge.domain.AppUser;
 import uz.tubeforge.domain.JobType;
 import uz.tubeforge.domain.Language;
 import uz.tubeforge.domain.MetadataState;
+import uz.tubeforge.domain.SourceType;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.media.SubtitleOption;
 import uz.tubeforge.media.VideoFormatOption;
@@ -45,8 +46,12 @@ public class KeyboardFactory {
         } else {
             if (features.videoDownload() || features.audioDownload()) {
                 List<InlineButton> row = new ArrayList<>();
-                if (features.videoDownload()) row.add(callback("⚡ " + user.getDefaultVideoQuality() + "p video",
-                        of("qv", requestId, user.getDefaultVideoQuality())));
+                if (features.videoDownload()) {
+                    boolean reel = info.sourceType() == SourceType.INSTAGRAM_REEL;
+                    String quality = reel ? "best" : user.getDefaultVideoQuality();
+                    row.add(callback(reel ? "⚡ Best Reel" : "⚡ " + user.getDefaultVideoQuality() + "p video",
+                            of("qv", requestId, quality)));
+                }
                 if (features.audioDownload()) row.add(callback("⚡ " + user.getDefaultAudioFormat() + " audio",
                         of("qa", requestId, user.getDefaultAudioFormat().toLowerCase(java.util.Locale.ROOT))));
                 rows.add(row);
@@ -74,7 +79,8 @@ public class KeyboardFactory {
             rows.add(List.of(callback("🔄 Retry details", of("metaretry", requestId))));
         }
         if (info.webpageUrl() != null && info.webpageUrl().startsWith("https://")) {
-            rows.add(List.of(InlineButton.link("▶️ Open on YouTube", info.webpageUrl()),
+            rows.add(List.of(InlineButton.link(info.sourceType() == SourceType.INSTAGRAM_REEL
+                            ? "📸 Open on Instagram" : "▶️ Open on YouTube", info.webpageUrl()),
                     callback("❌ Close", of("close"))));
         } else {
             rows.add(List.of(callback("❌ Close", of("close"))));

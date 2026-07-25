@@ -1,5 +1,13 @@
 # Changelog
 
+## 6.0.0
+
+- Added public Instagram Reel URL recognition through the shared media pipeline.
+- Added an instant `Best Reel` action that starts the highest-quality yt-dlp selection while metadata loads in the background.
+- Reused global metadata/artifact/file-id caching, duplicate-job protection, progress, cancellation and delivery fallbacks for Instagram and YouTube.
+- Added source-aware Instagram login/private/rate-limit errors and `FEATURE_INSTAGRAM_REELS` configuration.
+- Kept private, login-only and access-controlled content out of scope; no browser-cookie decryption or access-control bypass is performed.
+
 ## 5.0.0
 
 - Rebuilt the preview as a compact, one-screen workflow: quick actions first, formats second and useful tools behind one predictable entry point.

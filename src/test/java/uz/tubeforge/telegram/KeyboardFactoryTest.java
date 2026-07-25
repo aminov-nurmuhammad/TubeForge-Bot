@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class KeyboardFactoryTest {
     private final KeyboardFactory keyboards = new KeyboardFactory(
-            new FeatureProperties(true, true, true, true, true, true, true, true));
+            new FeatureProperties(true, true, true, true, true, true, true, true, true));
 
     @Test
     void subtitleButtonsUseCompactIndexes() {
@@ -71,5 +71,18 @@ class KeyboardFactoryTest {
         assertThat(labels).contains("⏳ Details loading");
         assertThat(labels).noneMatch(value -> value.contains("Transcript Studio"));
         assertThat(labels).noneMatch(value -> value.contains("Video options"));
+    }
+
+    @Test
+    void instagramReelStartsWithBestQualityAction() {
+        String requestId = UUID.randomUUID().toString();
+        AppUser user = new AppUser(1, "demo", "Demo", null, Language.EN, Instant.now());
+        MediaInfo info = MediaInfo.provisional(new uz.tubeforge.media.ParsedInstagramUrl(
+                "https://www.instagram.com/reel/ABC_123/", SourceType.INSTAGRAM_REEL, "ABC_123"));
+
+        var button = keyboards.preview(requestId, info, user, MetadataState.PENDING).rows().get(0).get(0);
+
+        assertThat(button.text()).isEqualTo("⚡ Best Reel");
+        assertThat(button.callbackData()).isEqualTo("qv:" + requestId + ":best");
     }
 }

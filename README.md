@@ -1,6 +1,6 @@
-# TubeForge Bot 4
+# TubeForge Bot 6
 
-TubeForge is a complete, self-hosted Telegram media toolkit built with Java 17 and Spring Boot 4. Send a supported YouTube link and use inline buttons to create an authorized video, audio track, thumbnail bundle, subtitle file, clean transcript, precise clip, or playlist export.
+TubeForge is a complete, self-hosted Telegram media toolkit built with Java 17 and Spring Boot 4. Send a supported YouTube link or a public Instagram Reel and use inline buttons to create an authorized video, audio track, thumbnail bundle, subtitle file, clean transcript, precise clip, or playlist export.
 
 The application uses only free, open-source components. It does not require a paid AI API, payment provider, domain, webhook, or subscription. Transcript Studio includes fast built-in extractive analysis and can optionally use a real local Ollama model.
 
@@ -9,6 +9,7 @@ The application uses only free, open-source components. It does not require a pa
 ## Features
 
 - Automatic recognition of normal YouTube URLs, `youtu.be`, Shorts, timestamped links and public playlists
+- Public Instagram Reel recognition (`instagram.com/reel/...` and `/reels/...`) with a one-tap `Best Reel` action
 - Instant link shell: one-tap video/audio appears before the slower yt-dlp metadata inspection finishes
 - Background metadata hydration with visible pending/degraded states and one-tap retry
 - Rich image preview with deterministic YouTube thumbnail and automatic text fallback
@@ -32,6 +33,7 @@ The application uses only free, open-source components. It does not require a pa
 - Verified video+audio streams and zero-conversion delivery when the file is already Telegram-ready H.264/AAC MP4
 - Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
 - Actionable diagnostics for YouTube rate limits, verification prompts, FFmpeg and JavaScript runtime failures
+- Source-aware diagnostics for Instagram login/private/rate-limit responses; private or login-only content is never bypassed
 - Interactive owner control center with workload, cache, performance and media-tool health views
 - Daily user quotas, owner/admin IDs, public or allowlist access
 - Terms acceptance and privacy information
@@ -65,7 +67,7 @@ You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) on Wi
    docker compose up --build -d
    ```
 
-5. Open the bot in Telegram, send `/start`, accept the terms and send a YouTube link.
+5. Open the bot in Telegram, send `/start`, accept the terms and send a YouTube or public Instagram Reel link.
 6. Follow logs if needed:
 
    ```bash
@@ -127,7 +129,7 @@ DATABASE_PASSWORD=your_local_password
 
 ```mermaid
 flowchart TD
-    A["Send YouTube link"] --> B["Instant one-tap card"]
+    A["Send YouTube or Instagram Reel link"] --> B["Instant one-tap card"]
     B --> C["Metadata loads in background"]
     B --> D{"Cached artifact?"}
     D -->|Yes| E["Instant file_id delivery"]
@@ -174,6 +176,7 @@ flowchart TD
 | `YT_DLP_CONCURRENT_FRAGMENTS` | `4` | Parallel HLS/DASH fragment downloads |
 | `YT_DLP_RETRIES` | `5` | Extractor and fragment retry count |
 | `FEATURE_*` | `true` | Independently enable or disable tools |
+| `FEATURE_INSTAGRAM_REELS` | `true` | Enable public Instagram Reel support |
 
 Every supported setting is documented in [`.env.example`](.env.example).
 
@@ -183,7 +186,7 @@ For a format the bot has already delivered, TubeForge stores Telegram's reusable
 
 When many users request the same uncached result simultaneously, single-flight coordination launches exactly one download and conversion. Every waiter receives that result after the first upload. Metadata inspection is also cached globally across users.
 
-The first uncached request cannot be guaranteed in milliseconds: its minimum time is controlled by YouTube response time, media size, server bandwidth and Telegram upload speed. TubeForge minimizes that path by preferring progressive MP4 with embedded audio when available, downloading fragments concurrently, stream-copying compatible codecs and transcoding only when required.
+The first uncached request cannot be guaranteed in milliseconds: its minimum time is controlled by the source response time, media size, server bandwidth and Telegram upload speed. TubeForge minimizes that path by starting the best-quality Reel/video job immediately, downloading fragments concurrently, stream-copying compatible codecs and transcoding only when required.
 
 ## Transcript Studio
 
@@ -254,7 +257,7 @@ If this repeatedly affects your own authorized media, set `YOUTUBE_COOKIES_FILE`
 The Maven build validates Java/Maven versions, runs all tests, produces a coverage report and creates:
 
 ```text
-target/tubeforge-bot-5.0.0.jar
+target/tubeforge-bot-6.0.0.jar
 ```
 
 ## Architecture
