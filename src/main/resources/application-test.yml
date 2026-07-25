@@ -60,6 +60,7 @@ tubeforge:
     allowed-user-ids:
     daily-job-limit: 20
     require-terms-acceptance: false
+    max-links-per-minute: 12
   features:
     video-download: true
     audio-download: true

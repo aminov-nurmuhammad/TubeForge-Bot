@@ -103,6 +103,7 @@ tubeforge:
     allowed-user-ids: ${ALLOWED_USER_IDS:}
     daily-job-limit: ${DAILY_JOB_LIMIT:20}
     require-terms-acceptance: ${REQUIRE_TERMS_ACCEPTANCE:true}
+    max-links-per-minute: ${MAX_LINKS_PER_MINUTE:12}
 
   features:
     video-download: ${FEATURE_VIDEO_DOWNLOAD:true}

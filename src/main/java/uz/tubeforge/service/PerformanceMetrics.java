@@ -16,6 +16,7 @@ public class PerformanceMetrics {
     private final Counter rejectedUpdates;
     private final Counter telegramRetries;
     private final Counter inspectionCooldownHits;
+    private final Counter rateLimitedLinks;
     private final Counter aiLocal;
     private final Counter aiOllama;
 
@@ -30,6 +31,7 @@ public class PerformanceMetrics {
         rejectedUpdates = registry.counter("tubeforge.telegram.updates.rejected");
         telegramRetries = registry.counter("tubeforge.telegram.api.retries");
         inspectionCooldownHits = registry.counter("tubeforge.inspection.cooldown.hits");
+        rateLimitedLinks = registry.counter("tubeforge.access.links.rate_limited");
         aiLocal = registry.counter("tubeforge.ai.requests", "provider", "local");
         aiOllama = registry.counter("tubeforge.ai.requests", "provider", "ollama");
     }
@@ -44,6 +46,7 @@ public class PerformanceMetrics {
     public void rejectedUpdate() { rejectedUpdates.increment(); }
     public void telegramRetry() { telegramRetries.increment(); }
     public void inspectionCooldownHit() { inspectionCooldownHits.increment(); }
+    public void rateLimitedLink() { rateLimitedLinks.increment(); }
     public void aiLocal() { aiLocal.increment(); }
     public void aiOllama() { aiOllama.increment(); }
 
@@ -51,7 +54,7 @@ public class PerformanceMetrics {
         return new Snapshot(value(metadataHits), value(metadataMisses), value(artifactHits),
                 value(artifactMisses), value(artifactStores), value(coalescedJobs),
                 value(dispatchedUpdates), value(rejectedUpdates), value(telegramRetries),
-                value(inspectionCooldownHits), value(aiLocal), value(aiOllama));
+                value(inspectionCooldownHits), value(rateLimitedLinks), value(aiLocal), value(aiOllama));
     }
 
     private long value(Counter counter) {
@@ -69,6 +72,7 @@ public class PerformanceMetrics {
             long rejectedUpdates,
             long telegramRetries,
             long inspectionCooldownHits,
+            long rateLimitedLinks,
             long aiLocal,
             long aiOllama
     ) {}

@@ -33,6 +33,7 @@ The application uses only free, open-source components. It does not require a pa
 - Per-chat ordered update dispatch: independent users run concurrently without reordering one user's button presses
 - Bounded Telegram update backpressure, explicit 429/5xx retry handling and duplicate-safe transport behavior
 - Short negative-result cooldowns that stop repeated broken links from hammering YouTube or Instagram
+- Configurable per-user link rate limiting that protects public deployments without restricting the owner
 - Telegram-friendly exact-format selection with automatic quality fallback when a source format disappears
 - Verified video+audio streams and zero-conversion delivery when the file is already Telegram-ready H.264/AAC MP4
 - Automatic fallback to document delivery when Telegram rejects inline photo, video or audio playback
@@ -165,6 +166,7 @@ flowchart TD
 | `ADMIN_USER_IDS` | `1491734372` | Comma-separated numeric Telegram IDs |
 | `ALLOWED_USER_IDS` | empty | IDs permitted in allowlist mode |
 | `DAILY_JOB_LIMIT` | `20` | Jobs per non-admin user in 24 hours |
+| `MAX_LINKS_PER_MINUTE` | `12` | Accepted links per non-admin user per minute |
 | `MAX_CONCURRENT_JOBS` | `2` | Media processes running simultaneously |
 | `MAX_CONCURRENT_INSPECTIONS` | `4` | Links that can be inspected simultaneously |
 | `TELEGRAM_MAX_CONCURRENT_UPDATES` | `8` | Independent Telegram chats processed concurrently |

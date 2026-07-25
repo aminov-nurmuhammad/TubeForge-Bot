@@ -132,6 +132,12 @@ public class TelegramUpdateRouter {
                 telegram.sendMessage(message.chat().id(), messages.terms(), keyboards.acceptTerms());
                 return;
             }
+            if (!access.canInspectLink(user.getTelegramUserId())) {
+                telegram.sendMessage(message.chat().id(),
+                        "⏱ <b>Too many links</b>\n\nPlease wait a minute before sending more. "
+                                + "Your active downloads keep running.", null);
+                return;
+            }
             inspectLink(user, message.chat().id(), url.get());
             return;
         }
@@ -653,6 +659,7 @@ public class TelegramUpdateRouter {
                 + value.rejectedUpdates() + "</b>\n"
                 + "Telegram API retries: <b>" + value.telegramRetries() + "</b>\n"
                 + "Inspection cooldown hits: <b>" + value.inspectionCooldownHits() + "</b>\n"
+                + "Rate-limited link floods: <b>" + value.rateLimitedLinks() + "</b>\n"
                 + "Local / Ollama analysis: <b>" + value.aiLocal() + " / " + value.aiOllama() + "</b>";
     }
 
