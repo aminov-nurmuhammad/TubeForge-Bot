@@ -43,10 +43,10 @@ class TelegramUpdateDispatcherTest {
         }).when(router).handle(org.mockito.ArgumentMatchers.any());
 
         try {
-            assertThat(dispatcher.dispatch(update(1, 1))).isTrue();
+            assertThat(dispatcher.dispatch(update(1, 1))).isNotNull();
             assertThat(firstStarted.await(1, TimeUnit.SECONDS)).isTrue();
-            assertThat(dispatcher.dispatch(update(2, 1))).isTrue();
-            assertThat(dispatcher.dispatch(update(3, 2))).isTrue();
+            assertThat(dispatcher.dispatch(update(2, 1))).isNotNull();
+            assertThat(dispatcher.dispatch(update(3, 2))).isNotNull();
 
             assertThat(otherChat.await(1, TimeUnit.SECONDS)).isTrue();
             assertThat(secondSameChat.getCount()).isEqualTo(1);

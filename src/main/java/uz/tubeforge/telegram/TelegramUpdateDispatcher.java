@@ -11,6 +11,7 @@ import uz.tubeforge.telegram.model.TgUpdate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -52,18 +53,24 @@ public class TelegramUpdateDispatcher {
         }
     }
 
-    public boolean dispatch(TgUpdate update) {
+    public CompletableFuture<Void> dispatch(TgUpdate update) {
         ThreadPoolExecutor stripe = stripes.get(Math.floorMod(orderingKey(update), stripes.size()));
+        CompletableFuture<Void> completion = new CompletableFuture<>();
         try {
             stripe.execute(() -> {
-                metrics.dispatchedUpdate();
-                router.handle(update);
+                try {
+                    metrics.dispatchedUpdate();
+                    router.handle(update);
+                    completion.complete(null);
+                } catch (Throwable error) {
+                    completion.completeExceptionally(error);
+                }
             });
-            return true;
+            return completion;
         } catch (java.util.concurrent.RejectedExecutionException e) {
             metrics.rejectedUpdate();
             log.warn("Telegram update queue is full; update {} will be requested again", update.updateId());
-            return false;
+            return null;
         }
     }
 

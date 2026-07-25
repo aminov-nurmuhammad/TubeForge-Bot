@@ -9,6 +9,8 @@ import uz.tubeforge.config.TelegramProperties;
 import uz.tubeforge.telegram.model.TgUpdate;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -51,9 +53,19 @@ public class TelegramPollingService {
             List<TgUpdate> updates = telegram.getUpdates(nextOffset);
             consecutiveFailures = 0;
             backoffUntilEpochMillis = 0;
+            List<CompletableFuture<Void>> accepted = new ArrayList<>(updates.size());
+            long acceptedOffset = nextOffset;
             for (TgUpdate update : updates) {
-                if (!dispatcher.dispatch(update)) break;
-                nextOffset = Math.max(nextOffset, update.updateId() + 1);
+                CompletableFuture<Void> completion = dispatcher.dispatch(update);
+                if (completion == null) break;
+                accepted.add(completion);
+                acceptedOffset = Math.max(acceptedOffset, update.updateId() + 1);
+            }
+            if (!accepted.isEmpty()) {
+                // Do not confirm Telegram offsets until every accepted update in this batch
+                // has actually been routed. This keeps the fast concurrent path crash-safe.
+                CompletableFuture.allOf(accepted.toArray(CompletableFuture[]::new)).join();
+                nextOffset = acceptedOffset;
             }
         } catch (TelegramApiException e) {
             log.warn("Telegram polling error: {}", e.getMessage());

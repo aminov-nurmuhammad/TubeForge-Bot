@@ -2,7 +2,7 @@
 
 ## 7.0.0
 
-- Replaced sequential Telegram routing with a bounded, per-chat ordered dispatcher: independent users are processed concurrently while each user's commands and button presses keep their original order.
+- Replaced sequential Telegram routing with a bounded, crash-safe per-chat ordered dispatcher: independent users are processed concurrently, each user's commands keep their original order, and offsets are confirmed only after accepted updates are routed.
 - Added explicit Telegram 429/5xx retry handling with server-provided delay support, exponential jitter and duplicate-safe handling of unknown transport outcomes.
 - Removed redundant cache queries and progress edits from the job hot path; artifact keys are now platform-qualified so YouTube and Instagram IDs cannot collide.
 - Added short failure cooldowns and single-flight reuse for repeated bad links, preventing retry storms without blocking unrelated media.
