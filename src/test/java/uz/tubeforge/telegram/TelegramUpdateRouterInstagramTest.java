@@ -41,7 +41,7 @@ class TelegramUpdateRouterInstagramTest {
         ParsedInstagramUrl url = new ParsedInstagramUrl(
                 "https://www.instagram.com/reel/ABC123/", SourceType.INSTAGRAM_REEL, "ABC123");
         MediaRequest request = MediaRequest.instant(7, 70, url.normalizedUrl(), SourceType.INSTAGRAM_REEL,
-                "{}", "ABC123", "Instagram Reel", "Instagram", 0, "", Instant.now(),
+                "{}", "ABC123", "Instagram Reel", "Instagram", 0L, "", Instant.now(),
                 Instant.now().plusSeconds(3600));
         when(users.getOrCreate(any())).thenReturn(user);
         when(access.isAllowed(7)).thenReturn(true);
