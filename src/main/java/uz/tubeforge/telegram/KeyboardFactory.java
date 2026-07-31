@@ -90,6 +90,31 @@ public class KeyboardFactory {
         return InlineKeyboard.of(rows);
     }
 
+    public InlineKeyboard reelDelivery(String requestId, String sourceUrl) {
+        List<List<InlineButton>> rows = new ArrayList<>();
+        List<InlineButton> actions = new ArrayList<>();
+        if (features.audioDownload()) {
+            actions.add(callback("🎵 Audio", of("qa", requestId, "m4a")));
+        }
+        if (features.thumbnails()) {
+            actions.add(callback("🖼 Cover", of("dlt", requestId)));
+        }
+        if (!actions.isEmpty()) rows.add(List.copyOf(actions));
+        if (sourceUrl != null && sourceUrl.startsWith("https://")) {
+            rows.add(List.of(InlineButton.link("📸 Open original", sourceUrl)));
+        }
+        return InlineKeyboard.of(rows);
+    }
+
+    public InlineKeyboard reelRetry(String requestId, String sourceUrl) {
+        List<List<InlineButton>> rows = new ArrayList<>();
+        rows.add(List.of(callback("🔄 Try again", of("qv", requestId, "best"))));
+        if (sourceUrl != null && sourceUrl.startsWith("https://")) {
+            rows.add(List.of(InlineButton.link("📸 Open original", sourceUrl)));
+        }
+        return InlineKeyboard.of(rows);
+    }
+
     public InlineKeyboard videoFormats(String requestId, MediaInfo info) {
         return videoFormats(requestId, info, false);
     }
@@ -254,7 +279,7 @@ public class KeyboardFactory {
         return InlineKeyboard.of(List.of(
                 List.of(callback("🌐 Language", of("setlang"))),
                 List.of(callback("🎥 Video quality", of("setvq")), callback("🎵 Audio format", of("setaf"))),
-                List.of(callback(user.isSendAsDocument() ? "📎 Send as document ✓" : "▶️ Send as video ✓", of("toggledoc"))),
+                List.of(callback(user.isSendAsDocument() ? "📎 YouTube: document ✓" : "▶️ YouTube: video ✓", of("toggledoc"))),
                 List.of(callback(user.isAutoCompress() ? "📦 Auto-compress: ON" : "📦 Auto-compress: OFF", of("togglecmp"))),
                 List.of(callback("✅ Done", of("close")))
         ));

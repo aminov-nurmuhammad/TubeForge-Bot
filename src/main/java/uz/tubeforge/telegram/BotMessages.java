@@ -12,17 +12,17 @@ import uz.tubeforge.util.HumanFormat;
 public class BotMessages {
     public String welcome(AppUser user) {
         return switch (user.getLanguage()) {
-            case RU -> "<b>Добро пожаловать в TubeForge</b> ⚡\n\nОтправьте ссылку YouTube или публичного Instagram Reel. Я быстро покажу лучшие доступные действия: видео, аудио, обложку и дополнительные инструменты.\n\nВсе инструменты работают прямо через кнопки под сообщением.";
-            case UZ -> "<b>TubeForge’ga xush kelibsiz</b> ⚡\n\nYouTube yoki ochiq Instagram Reel havolasini yuboring. Men eng yaxshi video, audio, prevyu va boshqa amallarni tez ko‘rsataman.\n\nBarcha amallar xabar ostidagi tugmalar orqali ishlaydi.";
-            default -> "<b>Welcome to TubeForge</b> ⚡\n\nSend a YouTube or public Instagram Reel link. I’ll quickly show the best available video, audio, cover and useful tools.\n\nEverything works through the buttons beneath each message.";
+            case RU -> "<b>Добро пожаловать в TubeForge</b> ⚡\n\nОтправьте ссылку YouTube или публичного Instagram Reel. Reel сразу придёт готовым видео; для YouTube я покажу качество, аудио и полезные инструменты.\n\nВсе дополнительные действия находятся под результатом.";
+            case UZ -> "<b>TubeForge’ga xush kelibsiz</b> ⚡\n\nYouTube yoki ochiq Instagram Reel havolasini yuboring. Reel darhol tayyor video bo‘lib keladi; YouTube uchun sifat, audio va foydali vositalar ko‘rsatiladi.\n\nQo‘shimcha amallar natija ostida joylashgan.";
+            default -> "<b>Welcome to TubeForge</b> ⚡\n\nSend a YouTube or public Instagram Reel link. A Reel arrives directly as a ready video; YouTube opens quality, audio and useful tools.\n\nExtra actions stay beneath the result.";
         };
     }
 
     public String help(Language language) {
         return switch (language) {
-            case RU -> "<b>Как пользоваться TubeForge</b>\n\n1. Отправьте ссылку YouTube или публичного Instagram Reel.\n2. Нажмите быстрое действие под превью — для Reel первая кнопка сразу выбирает максимум качества.\n3. При необходимости выберите точный формат.\n4. Получите файл; повторные запросы используют кэш.\n\nКоманды: /jobs — обработка, /history — ссылки, /settings — настройки.";
-            case UZ -> "<b>TubeForge’dan foydalanish</b>\n\n1. YouTube yoki ochiq Instagram Reel havolasini yuboring.\n2. Prevyu ostidagi tezkor amalni bosing — Reel uchun birinchi tugma eng yuqori sifatni tanlaydi.\n3. Kerak bo‘lsa aniq formatni tanlang.\n4. Faylni oling; takroriy so‘rovlar keshdan foydalanadi.\n\nBuyruqlar: /jobs, /history, /settings.";
-            default -> "<b>How to use TubeForge</b>\n\n1. Send a YouTube or public Instagram Reel link.\n2. Tap the quick action beneath the preview — Reel’s first button requests the best available quality.\n3. Choose an exact format when needed.\n4. Receive the file; repeated requests use the shared cache.\n\nUse /jobs for progress, /history for recent links and /settings for preferences.";
+            case RU -> "<b>Как пользоваться TubeForge</b>\n\n• Instagram Reel: просто отправьте ссылку — бот сразу пришлёт оригинальное видео. Под ним доступны аудио, обложка и исходный пост.\n• YouTube: отправьте ссылку, затем выберите быстрое качество либо откройте точные форматы и инструменты.\n• Повторный запрос готового результата отправляется из общего кэша.\n\nКоманды: /jobs — обработка, /history — ссылки, /settings — настройки.";
+            case UZ -> "<b>TubeForge’dan foydalanish</b>\n\n• Instagram Reel: havolani yuboring — bot original videoni darhol jo‘natadi. Uning ostida audio, cover va original post mavjud.\n• YouTube: havolani yuboring, tezkor sifatni tanlang yoki aniq format va vositalarni oching.\n• Tayyor natijaning takroriy so‘rovi umumiy keshdan yuboriladi.\n\nBuyruqlar: /jobs, /history, /settings.";
+            default -> "<b>How to use TubeForge</b>\n\n• Instagram Reel: send the link and the bot immediately returns the original video. Audio, cover and original-post actions are attached to it.\n• YouTube: send the link, choose a quick quality or open exact formats and tools.\n• Repeated ready results are delivered from the shared cache.\n\nUse /jobs for progress, /history for recent links and /settings for preferences.";
         };
     }
 
@@ -84,7 +84,8 @@ public class BotMessages {
                 + "🌐 <b>Language:</b> " + user.getLanguage().label() + "\n"
                 + "🎥 <b>Default video:</b> " + user.getDefaultVideoQuality() + "p\n"
                 + "🎵 <b>Default audio:</b> " + user.getDefaultAudioFormat() + "\n"
-                + "📎 <b>Send video as:</b> " + (user.isSendAsDocument() ? "Document" : "Playable video") + "\n"
+                + "📎 <b>YouTube video as:</b> " + (user.isSendAsDocument() ? "Document" : "Playable video") + "\n"
+                + "📸 <b>Instagram Reels:</b> Playable video\n"
                 + "📦 <b>Auto-compress:</b> " + (user.isAutoCompress() ? "On" : "Off");
     }
 

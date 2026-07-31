@@ -324,6 +324,10 @@ public class TelegramUpdateRouter {
     }
 
     private void inspectLink(AppUser user, long chatId, ParsedMediaUrl url) {
+        if (url.sourceType() == SourceType.INSTAGRAM_REEL) {
+            startInstantReel(user, chatId, url);
+            return;
+        }
         Optional<MediaRequest> cached = requests.reusable(user.getTelegramUserId(), chatId, url);
         if (cached.isPresent()) {
             MediaRequest request = cached.orElseThrow();
@@ -348,6 +352,16 @@ public class TelegramUpdateRouter {
         }
         requests.attachPreviewMessage(request.getId(), preview.messageId());
         scheduleMetadata(request.getId(), url, user, chatId, preview.messageId(), preview.caption() != null);
+    }
+
+    private void startInstantReel(AppUser user, long chatId, ParsedMediaUrl url) {
+        MediaRequest request = requests.createInstant(user.getTelegramUserId(), chatId, url);
+        try {
+            jobs.queue(user.getTelegramUserId(), request.getId(), JobType.VIDEO, "best", null);
+        } catch (MediaProcessingException e) {
+            telegram.sendMessage(chatId, "⚠️ <b>Could not start this Reel</b>\n\n"
+                    + Html.escape(e.getUserMessage()), keyboards.reelRetry(request.getId(), request.getSourceUrl()));
+        }
     }
 
     private void sendCachedPreview(long chatId, MediaRequest request, MediaInfo info, AppUser user) {
@@ -643,7 +657,8 @@ public class TelegramUpdateRouter {
                 + "📤 Delivering: <b>" + delivering + "</b>\n"
                 + "❌ Failed (all time): <b>" + failed + "</b>\n"
                 + "🔎 Metadata workers active: <b>" + inspection.activeInspections() + "</b>\n"
-                + "🧯 Links in retry cooldown: <b>" + inspection.coolingDownLinks() + "</b>";
+                + "🧯 Metadata retry cooldowns: <b>" + inspection.coolingDownLinks() + "</b>\n"
+                + "📸 Reel download cooldowns: <b>" + jobs.coolingDownMedia() + "</b>";
     }
 
     private String adminCache() {
@@ -660,6 +675,11 @@ public class TelegramUpdateRouter {
                 + "Telegram API retries: <b>" + value.telegramRetries() + "</b>\n"
                 + "Inspection cooldown hits: <b>" + value.inspectionCooldownHits() + "</b>\n"
                 + "Rate-limited link floods: <b>" + value.rateLimitedLinks() + "</b>\n"
+                + "Instant Reels requested / delivered: <b>" + value.instantReelRequests() + " / "
+                + value.instantReelDeliveries() + "</b>\n"
+                + "Instant Reel cache / failures: <b>" + value.instantReelCacheDeliveries() + " / "
+                + value.instantReelFailures() + "</b>\n"
+                + "Average Reel delivery: <b>" + value.instantReelAverageMillis() + " ms</b>\n"
                 + "Local / Ollama analysis: <b>" + value.aiLocal() + " / " + value.aiOllama() + "</b>";
     }
 

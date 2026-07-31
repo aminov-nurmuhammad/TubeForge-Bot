@@ -3,6 +3,7 @@ package uz.tubeforge.media;
 import org.springframework.stereotype.Component;
 import uz.tubeforge.config.MediaProperties;
 import uz.tubeforge.domain.JobType;
+import uz.tubeforge.domain.SourceType;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,19 +33,24 @@ public class YtDlpCommandFactory {
 
     public List<String> download(JobType type, String formatCode, String url, Path outputDirectory,
                                  ClipRange clipRange, int maxPlaylistItems) {
+        return download(type, formatCode, url, outputDirectory, clipRange, maxPlaylistItems, SourceType.VIDEO);
+    }
+
+    public List<String> download(JobType type, String formatCode, String url, Path outputDirectory,
+                                 ClipRange clipRange, int maxPlaylistItems, SourceType sourceType) {
         List<String> command = base();
         command.addAll(List.of("--newline", "--restrict-filenames", "--trim-filenames", "180", "--no-mtime",
                 "--progress-template", "download:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
                 "-o", outputDirectory.resolve("%(title).120B-%(id)s.%(ext)s").toString()));
 
         switch (type) {
-            case VIDEO -> addVideo(command, formatCode);
+            case VIDEO -> addVideo(command, formatCode, sourceType);
             case AUDIO -> addAudio(command, formatCode);
             case THUMBNAIL -> command.addAll(List.of("--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg"));
             case ALL_THUMBNAILS -> command.addAll(List.of("--skip-download", "--write-all-thumbnails", "--convert-thumbnails", "jpg"));
             case SUBTITLES, TRANSCRIPT, AI_SUMMARY, AI_CHAPTERS, AI_STUDY_NOTES -> addSubtitles(command, formatCode);
             case CLIP_VIDEO -> {
-                addVideo(command, formatCode == null || formatCode.isBlank() ? "720" : formatCode);
+                addVideo(command, formatCode == null || formatCode.isBlank() ? "720" : formatCode, sourceType);
                 addClip(command, clipRange);
             }
             case CLIP_AUDIO -> {
@@ -53,7 +59,7 @@ public class YtDlpCommandFactory {
             }
             case PLAYLIST_VIDEO -> {
                 command.addAll(List.of("--yes-playlist", "--playlist-end", Integer.toString(maxPlaylistItems)));
-                addVideo(command, formatCode);
+                addVideo(command, formatCode, sourceType);
             }
             case PLAYLIST_AUDIO -> {
                 command.addAll(List.of("--yes-playlist", "--playlist-end", Integer.toString(maxPlaylistItems)));
@@ -93,11 +99,16 @@ public class YtDlpCommandFactory {
         return command;
     }
 
-    private void addVideo(List<String> command, String quality) {
+    private void addVideo(List<String> command, String quality, SourceType sourceType) {
         String requestedQuality = quality == null ? "" : quality.replace('~', ':');
         String selector;
         if ("best".equalsIgnoreCase(requestedQuality)) {
-            selector = "bv*+ba/b";
+            // Public Reels normally expose their original H.264/AAC MP4 as one combined
+            // stream. Prefer it before DASH-style merging: one HTTP transfer and no merge
+            // is both the fastest path and the closest representation of the source file.
+            selector = sourceType == SourceType.INSTAGRAM_REEL
+                    ? "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]/bv*+ba"
+                    : "bv*+ba/b";
         } else if ("small".equalsIgnoreCase(requestedQuality)) {
             selector = "worstvideo+worstaudio/worst";
         } else if (requestedQuality.startsWith("format:")) {

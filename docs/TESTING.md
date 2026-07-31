@@ -14,6 +14,9 @@ The suite covers:
 - subtitle-to-transcript conversion;
 - metadata parsing for formats and subtitle precedence;
 - compact one-tap keyboards and callback size limits;
+- automatic Instagram routing with no preview/inspection on the direct-video path;
+- original combined-MP4 selection, forced inline Reel delivery and minimal result actions;
+- Reel cache reuse across YouTube-only document/compression preferences;
 - reusable Telegram `file_id` extraction;
 - local AI summaries and timestamped chapters;
 - full Spring context startup with Flyway and H2.
@@ -23,7 +26,7 @@ The JaCoCo report is created under `target/site/jacoco/index.html`.
 ## Manual bot smoke test
 
 1. Send `/start` and accept terms.
-2. Send one short public video you are authorized to process.
+2. Send one short public YouTube video you are authorized to process.
 3. Test 360p/720p video, MP3 audio, best thumbnail, one subtitle and transcript.
 4. Create a 10-second video and audio clip.
 5. Cancel one running job.
@@ -33,5 +36,7 @@ The JaCoCo report is created under `target/site/jacoco/index.html`.
 9. Verify `/actuator/health` and `/admin`.
 10. Request the same quality twice and confirm the second job reports an instant cache hit.
 11. Run every Transcript Studio mode for one subtitle language.
+12. Send a public Reel and confirm the first bot message is the video itself with Audio, Cover and Open original actions.
+13. Send the same Reel again and confirm Telegram serves the cached video immediately.
 
 Do not place real bot tokens or copyrighted test media in the repository.

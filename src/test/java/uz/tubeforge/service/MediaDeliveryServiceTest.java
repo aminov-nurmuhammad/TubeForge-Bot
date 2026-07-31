@@ -11,6 +11,7 @@ import uz.tubeforge.media.MediaFileTools;
 import uz.tubeforge.media.MediaInfo;
 import uz.tubeforge.telegram.TelegramApiClient;
 import uz.tubeforge.telegram.TelegramApiException;
+import uz.tubeforge.telegram.model.InlineKeyboard;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -78,5 +79,39 @@ class MediaDeliveryServiceTest {
         service.deliver(10, photo, JobType.THUMBNAIL, info, user);
 
         verify(telegram).sendDocument(eq(10L), eq(photo), anyString());
+    }
+
+    @Test
+    void alwaysDeliversInstagramReelsAsInlineVideoWithActions() throws Exception {
+        Path input = Files.write(directory.resolve("reel.mp4"), new byte[] {1});
+        when(fileTools.prepareTelegramVideo(input)).thenReturn(input);
+        user.setSendAsDocument(true);
+        MediaInfo reel = new MediaInfo("ABC", "Instagram Reel", "Instagram", 20, "", "",
+                SourceType.INSTAGRAM_REEL, 0, "", "", 0, List.of(), List.of());
+        InlineKeyboard keyboard = InlineKeyboard.of(List.of());
+
+        service.deliver(10, input, JobType.VIDEO, reel, user, keyboard);
+
+        verify(telegram).sendVideo(10, input, "📸 <b>Instagram Reel</b>", true, keyboard);
+        verify(telegram, never()).sendDocument(anyLong(), any(Path.class), anyString(), any(InlineKeyboard.class));
+    }
+
+    @Test
+    void oversizedReelKeepsSingleVideoContractEvenWhenYouTubeCompressionIsDisabled() throws Exception {
+        Path input = Files.write(directory.resolve("large-reel.mp4"), new byte[1_000_001]);
+        Path compressed = Files.write(directory.resolve("compressed-reel.mp4"), new byte[] {1, 2, 3});
+        user.setAutoCompress(false);
+        when(fileTools.prepareTelegramVideo(input)).thenReturn(input);
+        when(fileTools.compressVideo(input, 920_000)).thenReturn(compressed);
+        MediaInfo reel = new MediaInfo("ABC", "Instagram Reel", "Instagram", 20, "", "",
+                SourceType.INSTAGRAM_REEL, 0, "", "", 0, List.of(), List.of());
+        MediaDeliveryService limited = new MediaDeliveryService(
+                new TelegramProperties("test", "https://api.telegram.org", false, 1, 1_000_000,
+                        2, 50, 0, Duration.ofMillis(10)), telegram, fileTools);
+
+        limited.deliver(10, input, JobType.VIDEO, reel, user);
+
+        verify(fileTools).compressVideo(input, 920_000);
+        verify(telegram).sendVideo(10, compressed, "📸 <b>Instagram Reel</b>", true);
     }
 }

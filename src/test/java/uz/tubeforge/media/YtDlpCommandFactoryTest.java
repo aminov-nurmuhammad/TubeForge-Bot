@@ -51,6 +51,16 @@ class YtDlpCommandFactoryTest {
     }
 
     @Test
+    void instagramBestPrefersTheOriginalCombinedMp4() {
+        var command = factory.download(JobType.VIDEO, "best", "https://www.instagram.com/reel/ABC123/",
+                Path.of("/tmp/job"), null, 20, uz.tubeforge.domain.SourceType.INSTAGRAM_REEL);
+
+        assertThat(String.join(" ", command)).contains("-f best[ext=mp4][vcodec!=none][acodec!=none]/"
+                        + "best[vcodec!=none][acodec!=none]/bv*+ba")
+                .contains("--concurrent-fragments 4", "--merge-output-format mp4");
+    }
+
+    @Test
     void addsClipRangeAndAudioPostprocessing() {
         var command = factory.download(JobType.CLIP_AUDIO, "mp3:192", "https://youtu.be/abc",
                 Path.of("/tmp/job"), ClipRange.parse("1:00-1:10"), 20);

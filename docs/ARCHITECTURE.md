@@ -27,7 +27,9 @@ stateDiagram-v2
 
 Long polling receives update batches and confirms their offsets only after every accepted update has been routed. A bounded striped dispatcher keeps updates from the same chat in order while allowing independent chats to run concurrently, so one slow Telegram API response cannot serialize the entire batch and a process crash cannot silently discard queued updates.
 
-Link acceptance no longer waits for metadata inspection. TubeForge creates a provisional READY request from a canonical YouTube or public Instagram Reel URL and deterministic source ID, displays safe one-tap actions (including `Best Reel`), and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
+YouTube link acceptance does not wait for metadata inspection. TubeForge creates a provisional READY request, displays safe one-tap actions and hydrates formats/subtitles in a separate bounded executor. The request's metadata state moves through `PENDING`, `READY`, or `DEGRADED`; a degraded inspection never disables quick downloads.
+
+Instagram uses a separate latency-first route. A recognized public Reel creates its provisional request and immediately queues `VIDEO/best`; it does not send a preview card or start a competing metadata inspection. Cached results are delivered by Telegram `file_id`. An uncached job prefers the source's combined MP4, verifies video and audio streams, preserves compatible H.264/AAC bytes and attaches the small Reel action keyboard to the resulting video.
 
 Media work uses its own bounded executor, so a long download cannot freeze new-link previews. Each job receives an isolated UUID-named directory. Active processes are tracked by job ID so cancellation terminates the process and its descendants.
 
@@ -35,8 +37,8 @@ Media work uses its own bounded executor, so a long download cannot freeze new-l
 
 TubeForge has three persistent cache levels:
 
-1. Canonical metadata is reused across users by normalized YouTube URL.
-2. Uploaded media is stored as a Telegram `file_id` keyed by source, job type, exact format and delivery preferences.
+1. Canonical YouTube metadata is reused across users by normalized URL.
+2. Uploaded media is stored as a Telegram `file_id` keyed by platform, source, job type, exact format and relevant delivery preferences. Reel videos intentionally ignore YouTube-only document/compression preferences because their contract is one inline playable video.
 3. AI results are keyed by source, insight type, transcript language, interface language and configured model.
 
 In-memory single-flight maps cover the short interval before a cache entry exists. Identical concurrent metadata requests share one yt-dlp inspection; identical concurrent downloads share one leader job. A cached `file_id` contains no YouTube signed URL and lets Telegram deliver its own server-side copy.
@@ -58,4 +60,4 @@ Flyway owns the schema. H2 is the zero-setup development database; the Docker de
 
 ## Delivery
 
-Video delivery probes both streams once. An MP4 that already contains H.264 video and AAC audio bypasses FFmpeg completely; incompatible media is normalized for Telegram playback. Small results are sent directly. Large video/audio is compressed toward the configured ceiling and, when necessary, segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely. Inline media failures fall back to document delivery when Telegram permits it.
+Video delivery probes both streams once. An MP4 that already contains H.264 video and AAC audio bypasses FFmpeg completely; incompatible media is normalized for Telegram playback. Reels are always attempted as inline streaming video, carry their actions on the media message itself and automatically compress only when needed to preserve a single-result experience. Other large video/audio follows the user's compression preference and, when necessary, is segmented into multiple parts. Archives and subtitle documents fail clearly rather than being transformed unsafely. Inline media failures fall back to document delivery when Telegram permits it.
