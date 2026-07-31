@@ -88,6 +88,18 @@ class KeyboardFactoryTest {
     }
 
     @Test
+    void deliveredReelOffersOnlyUsefulActionsAndNoQualityPicker() {
+        String requestId = UUID.randomUUID().toString();
+
+        var keyboard = keyboards.reelDelivery(requestId, "https://www.instagram.com/reel/ABC_123/");
+        var labels = keyboard.rows().stream().flatMap(List::stream).map(button -> button.text()).toList();
+
+        assertThat(labels).containsExactly("🎵 Audio", "🖼 Cover", "📸 Open original")
+                .noneMatch(label -> label.contains("quality") || label.contains("format") || label.contains("Best Reel"));
+        assertThat(keyboard.rows().get(0).get(0).callbackData()).isEqualTo("qa:" + requestId + ":m4a");
+    }
+
+    @Test
     void toolsHideTranscriptActionsWhenSubtitlesDoNotExist() {
         String requestId = UUID.randomUUID().toString();
         MediaInfo info = new MediaInfo("id", "Title", "Channel", 60, "", "",

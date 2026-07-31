@@ -10,6 +10,7 @@ import uz.tubeforge.repository.MediaArtifactRepository;
 import uz.tubeforge.telegram.TelegramApiClient;
 import uz.tubeforge.telegram.TelegramFileReference;
 import uz.tubeforge.telegram.model.TgMessage;
+import uz.tubeforge.telegram.model.InlineKeyboard;
 import uz.tubeforge.util.Html;
 
 import java.time.Clock;
@@ -40,8 +41,11 @@ public class ArtifactCacheService {
     public String key(MediaRequest request, JobType type, String formatCode, AppUser user) {
         String identity = request.getSourceId() == null || request.getSourceId().isBlank()
                 ? request.getSourceUrl() : request.getSourceId();
+        boolean instantReel = request.getSourceType() == SourceType.INSTAGRAM_REEL && type == JobType.VIDEO;
+        boolean document = instantReel ? false : user.isSendAsDocument();
+        boolean compress = instantReel || user.isAutoCompress();
         String raw = request.getSourceType() + "|" + identity + '|' + type + '|' + nullToEmpty(formatCode)
-                + "|document=" + user.isSendAsDocument() + "|compress=" + user.isAutoCompress();
+                + "|document=" + document + "|compress=" + compress;
         return Sha256.hex(raw);
     }
 
@@ -93,13 +97,27 @@ public class ArtifactCacheService {
     }
 
     public TelegramFileReference deliver(MediaArtifact artifact, long chatId, MediaInfo info) {
-        String caption = "⚡ <b>TubeForge</b>\n" + Html.escape(info.title())
-                + "\n♻️ Instant cache delivery";
+        return deliver(artifact, chatId, info, null);
+    }
+
+    public TelegramFileReference deliver(MediaArtifact artifact, long chatId, MediaInfo info,
+                                         InlineKeyboard keyboard) {
+        String caption = info.sourceType() == SourceType.INSTAGRAM_REEL
+                ? "📸 <b>Instagram Reel</b>"
+                : "⚡ <b>TubeForge</b>\n" + Html.escape(info.title());
         TgMessage message = switch (artifact.getDeliveryKind()) {
-            case VIDEO -> telegram.sendVideo(chatId, artifact.getTelegramFileId(), caption, true);
-            case AUDIO -> telegram.sendAudio(chatId, artifact.getTelegramFileId(), caption, info.title(), info.channel());
-            case PHOTO -> telegram.sendPhoto(chatId, artifact.getTelegramFileId(), caption);
-            case DOCUMENT -> telegram.sendDocument(chatId, artifact.getTelegramFileId(), caption);
+            case VIDEO -> keyboard == null
+                    ? telegram.sendVideo(chatId, artifact.getTelegramFileId(), caption, true)
+                    : telegram.sendVideo(chatId, artifact.getTelegramFileId(), caption, true, keyboard);
+            case AUDIO -> keyboard == null
+                    ? telegram.sendAudio(chatId, artifact.getTelegramFileId(), caption, info.title(), info.channel())
+                    : telegram.sendAudio(chatId, artifact.getTelegramFileId(), caption, info.title(), info.channel(), keyboard);
+            case PHOTO -> keyboard == null
+                    ? telegram.sendPhoto(chatId, artifact.getTelegramFileId(), caption)
+                    : telegram.sendPhoto(chatId, artifact.getTelegramFileId(), caption, keyboard);
+            case DOCUMENT -> keyboard == null
+                    ? telegram.sendDocument(chatId, artifact.getTelegramFileId(), caption)
+                    : telegram.sendDocument(chatId, artifact.getTelegramFileId(), caption, keyboard);
         };
         return TelegramFileReference.from(message).orElse(new TelegramFileReference(
                 artifact.getDeliveryKind(), artifact.getTelegramFileId(), artifact.getTelegramFileUniqueId(),

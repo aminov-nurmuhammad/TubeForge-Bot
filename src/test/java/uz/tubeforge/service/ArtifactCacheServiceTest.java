@@ -37,4 +37,23 @@ class ArtifactCacheServiceTest {
         assertThat(cache.key(youtube, JobType.VIDEO, "best", user))
                 .isNotEqualTo(cache.key(instagram, JobType.VIDEO, "best", user));
     }
+
+    @Test
+    void reelVideoCacheIgnoresYouTubeDeliveryPreferencesBecauseReelsAreAlwaysInline() {
+        ArtifactCacheService cache = new ArtifactCacheService(mock(MediaArtifactRepository.class),
+                mock(TelegramApiClient.class), new CacheProperties(true, Duration.ofDays(30), Duration.ofDays(7)),
+                mock(PerformanceMetrics.class),
+                Clock.fixed(Instant.parse("2026-07-25T10:00:00Z"), ZoneOffset.UTC));
+        Instant now = Instant.parse("2026-07-25T10:00:00Z");
+        MediaRequest reel = MediaRequest.instant(1, 1, "https://www.instagram.com/reel/ABC123/",
+                SourceType.INSTAGRAM_REEL, "{}", "ABC123", "Instagram Reel", "Instagram", 0L, "", now,
+                now.plusSeconds(60));
+        AppUser inline = new AppUser(1, "one", "One", null, Language.EN, now);
+        AppUser document = new AppUser(2, "two", "Two", null, Language.EN, now);
+        document.setSendAsDocument(true);
+        document.setAutoCompress(false);
+
+        assertThat(cache.key(reel, JobType.VIDEO, "best", inline))
+                .isEqualTo(cache.key(reel, JobType.VIDEO, "best", document));
+    }
 }

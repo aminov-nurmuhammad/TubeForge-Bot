@@ -1,5 +1,19 @@
 # Changelog
 
+## 8.0.0
+
+- Rebuilt Instagram as a direct-delivery product flow: sending a public Reel now starts the video immediately without a preview card, quality picker, metadata wait or extra progress message.
+- Prefer Instagram's original combined MP4 before any separate-stream merge, preserving H.264/AAC media unchanged whenever Telegram can accept it.
+- Added a minimal result keyboard to the delivered Reel itself: audio, cover and original-post actions only.
+- Made inline video delivery mandatory for Reels even when a user previously selected document delivery; Telegram document fallback remains available only when inline playback is rejected.
+- Unified fresh and cached Reel delivery so both paths attach the same clean actions and captions.
+- Removed YouTube-only delivery preferences from Reel cache identity, allowing one reusable Telegram `file_id` to serve every user.
+- Made oversized Reels compress automatically toward Telegram's configured ceiling so the direct-video contract does not unexpectedly turn into a multipart delivery.
+- Added short download-failure cooldowns for repeated private, unavailable, rate-limited and broken Reels without blocking a previously cached result.
+- Added silent-job failure recovery with one concise retry card, closing the previous case where a background Reel could fail without visible feedback.
+- Added dedicated request, delivery, cache, failure and end-to-end latency metrics to the owner control center and Actuator.
+- Added contract tests for automatic Reel routing, original-MP4 selection, clean result actions, forced inline delivery and cross-preference cache reuse.
+
 ## 7.0.0
 
 - Replaced sequential Telegram routing with a bounded, crash-safe per-chat ordered dispatcher: independent users are processed concurrently, each user's commands keep their original order, and offsets are confirmed only after accepted updates are routed.

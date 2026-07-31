@@ -12,6 +12,7 @@ import uz.tubeforge.media.MediaProcessingException;
 import uz.tubeforge.telegram.TelegramApiClient;
 import uz.tubeforge.telegram.TelegramApiException;
 import uz.tubeforge.telegram.TelegramFileReference;
+import uz.tubeforge.telegram.model.InlineKeyboard;
 import uz.tubeforge.telegram.model.TgMessage;
 import uz.tubeforge.util.Html;
 
@@ -37,10 +38,17 @@ public class MediaDeliveryService {
     }
 
     public DeliveryResult deliver(long chatId, Path original, JobType type, MediaInfo info, AppUser user) {
+        return deliver(chatId, original, type, info, user, null);
+    }
+
+    public DeliveryResult deliver(long chatId, Path original, JobType type, MediaInfo info, AppUser user,
+                                  InlineKeyboard keyboard) {
         long limit = telegramProperties.maxUploadBytes();
         Path prepared = original;
         boolean mediaVideo = isVideo(type);
         boolean mediaAudio = isAudio(type);
+        boolean instantReel = mediaVideo
+                && info.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL;
 
         // Validate and normalize every video, including document uploads. This prevents a
         // video-only source from ever being delivered as a silent file when the user chose
@@ -49,7 +57,7 @@ public class MediaDeliveryService {
             prepared = fileTools.prepareTelegramVideo(prepared);
         }
 
-        if (size(prepared) > limit && user.isAutoCompress() && mediaVideo) {
+        if (size(prepared) > limit && (user.isAutoCompress() || instantReel) && mediaVideo) {
             prepared = fileTools.compressVideo(prepared, (long) (limit * 0.92));
         } else if (size(prepared) > limit && user.isAutoCompress() && mediaAudio) {
             prepared = fileTools.compressAudio(prepared, (long) (limit * 0.92));
@@ -58,7 +66,7 @@ public class MediaDeliveryService {
         List<Path> delivered = new ArrayList<>();
         List<TelegramFileReference> references = new ArrayList<>();
         if (size(prepared) <= limit) {
-            TelegramFileReference.from(sendOne(chatId, prepared, type, info, user, null)).ifPresent(references::add);
+            TelegramFileReference.from(sendOne(chatId, prepared, type, info, user, null, keyboard)).ifPresent(references::add);
             delivered.add(prepared);
             return new DeliveryResult(delivered, size(prepared), references);
         }
@@ -78,41 +86,72 @@ public class MediaDeliveryService {
             if (size(part) > limit && mediaAudio) part = fileTools.compressAudio(part, (long) (limit * 0.90));
             if (size(part) > limit) throw new MediaProcessingException("PART_TOO_LARGE", "A media part remains too large to upload.");
             TelegramFileReference.from(sendOne(chatId, part, type, info, user,
-                    "Part " + (i + 1) + "/" + parts.size())).ifPresent(references::add);
+                    "Part " + (i + 1) + "/" + parts.size(), i == 0 ? keyboard : null)).ifPresent(references::add);
             delivered.add(part);
         }
         long total = delivered.stream().mapToLong(this::size).sum();
         return new DeliveryResult(delivered, total, references);
     }
 
-    private TgMessage sendOne(long chatId, Path file, JobType type, MediaInfo info, AppUser user, String part) {
-        String caption = "✅ <b>TubeForge</b>\n" + Html.escape(info.title())
-                + (part == null ? "" : "\n" + part);
+    private TgMessage sendOne(long chatId, Path file, JobType type, MediaInfo info, AppUser user, String part,
+                              InlineKeyboard keyboard) {
+        String caption = caption(info) + (part == null ? "" : "\n" + part);
         if (type == JobType.THUMBNAIL) {
             try {
-                return telegram.sendPhoto(chatId, file, caption);
+                return sendPhoto(chatId, file, caption, keyboard);
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline photo {}: {}", file.getFileName(), e.getMessage());
-                return telegram.sendDocument(chatId, file, caption);
+                return sendDocument(chatId, file, caption, keyboard);
             }
-        } else if (isVideo(type) && !user.isSendAsDocument()) {
+        } else if (isVideo(type) && (!user.isSendAsDocument()
+                || info.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL)) {
             try {
-                return telegram.sendVideo(chatId, file, caption, true);
+                return sendVideo(chatId, file, caption, keyboard);
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline video {}: {}", file.getFileName(), e.getMessage());
-                return telegram.sendDocument(chatId, file,
-                        caption + "\n\n⚠️ Sent as a document because Telegram rejected inline playback.");
+                return sendDocument(chatId, file,
+                        caption + "\n\n⚠️ Telegram could not display this file as an inline video.", keyboard);
             }
         } else if (isAudio(type) && isTelegramAudio(file)) {
             try {
-                return telegram.sendAudio(chatId, file, caption, info.title(), info.channel());
+                return sendAudio(chatId, file, caption, info.title(), info.channel(), keyboard);
             } catch (TelegramApiException e) {
                 log.debug("Telegram rejected inline audio {}: {}", file.getFileName(), e.getMessage());
-                return telegram.sendDocument(chatId, file, caption);
+                return sendDocument(chatId, file, caption, keyboard);
             }
         } else {
-            return telegram.sendDocument(chatId, file, caption);
+            return sendDocument(chatId, file, caption, keyboard);
         }
+    }
+
+    private TgMessage sendVideo(long chatId, Path file, String caption, InlineKeyboard keyboard) {
+        return keyboard == null ? telegram.sendVideo(chatId, file, caption, true)
+                : telegram.sendVideo(chatId, file, caption, true, keyboard);
+    }
+
+    private TgMessage sendPhoto(long chatId, Path file, String caption, InlineKeyboard keyboard) {
+        return keyboard == null ? telegram.sendPhoto(chatId, file, caption)
+                : telegram.sendPhoto(chatId, file, caption, keyboard);
+    }
+
+    private TgMessage sendAudio(long chatId, Path file, String caption, String title, String performer,
+                                InlineKeyboard keyboard) {
+        return keyboard == null ? telegram.sendAudio(chatId, file, caption, title, performer)
+                : telegram.sendAudio(chatId, file, caption, title, performer, keyboard);
+    }
+
+    private TgMessage sendDocument(long chatId, Path file, String caption, InlineKeyboard keyboard) {
+        return keyboard == null ? telegram.sendDocument(chatId, file, caption)
+                : telegram.sendDocument(chatId, file, caption, keyboard);
+    }
+
+    private String caption(MediaInfo info) {
+        if (info.sourceType() == uz.tubeforge.domain.SourceType.INSTAGRAM_REEL) {
+            String title = info.title() == null ? "" : info.title().strip();
+            return "📸 <b>Instagram Reel</b>" + (title.isBlank() || "Instagram Reel".equals(title)
+                    ? "" : "\n" + Html.escape(title));
+        }
+        return "✅ <b>TubeForge</b>\n" + Html.escape(info.title());
     }
 
     private boolean isVideo(JobType type) {

@@ -112,39 +112,75 @@ public class TelegramApiClient {
     }
 
     public TgMessage sendVideo(long chatId, Path file, String caption, boolean supportsStreaming) {
+        return sendVideo(chatId, file, caption, supportsStreaming, null);
+    }
+
+    public TgMessage sendVideo(long chatId, Path file, String caption, boolean supportsStreaming,
+                               InlineKeyboard keyboard) {
         return upload("sendVideo", "video", chatId, file, caption,
-                Map.of("supports_streaming", Boolean.toString(supportsStreaming)));
+                Map.of("supports_streaming", Boolean.toString(supportsStreaming)), keyboard);
     }
 
     public TgMessage sendVideo(long chatId, String fileId, String caption, boolean supportsStreaming) {
+        return sendVideo(chatId, fileId, caption, supportsStreaming, null);
+    }
+
+    public TgMessage sendVideo(long chatId, String fileId, String caption, boolean supportsStreaming,
+                               InlineKeyboard keyboard) {
         return sendFileId("sendVideo", "video", chatId, fileId, caption,
-                Map.of("supports_streaming", supportsStreaming));
+                Map.of("supports_streaming", supportsStreaming), keyboard);
     }
 
     public TgMessage sendPhoto(long chatId, Path file, String caption) {
-        return upload("sendPhoto", "photo", chatId, file, caption, Map.of());
+        return sendPhoto(chatId, file, caption, null);
+    }
+
+    public TgMessage sendPhoto(long chatId, Path file, String caption, InlineKeyboard keyboard) {
+        return upload("sendPhoto", "photo", chatId, file, caption, Map.of(), keyboard);
     }
 
     public TgMessage sendPhoto(long chatId, String fileId, String caption) {
-        return sendFileId("sendPhoto", "photo", chatId, fileId, caption, Map.of());
+        return sendPhoto(chatId, fileId, caption, null);
+    }
+
+    public TgMessage sendPhoto(long chatId, String fileId, String caption, InlineKeyboard keyboard) {
+        return sendFileId("sendPhoto", "photo", chatId, fileId, caption, Map.of(), keyboard);
     }
 
     public TgMessage sendAudio(long chatId, Path file, String caption, String title, String performer) {
+        return sendAudio(chatId, file, caption, title, performer, null);
+    }
+
+    public TgMessage sendAudio(long chatId, Path file, String caption, String title, String performer,
+                               InlineKeyboard keyboard) {
         return upload("sendAudio", "audio", chatId, file, caption,
-                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)));
+                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)), keyboard);
     }
 
     public TgMessage sendAudio(long chatId, String fileId, String caption, String title, String performer) {
+        return sendAudio(chatId, fileId, caption, title, performer, null);
+    }
+
+    public TgMessage sendAudio(long chatId, String fileId, String caption, String title, String performer,
+                               InlineKeyboard keyboard) {
         return sendFileId("sendAudio", "audio", chatId, fileId, caption,
-                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)));
+                Map.of("title", safeMetadata(title), "performer", safeMetadata(performer)), keyboard);
     }
 
     public TgMessage sendDocument(long chatId, Path file, String caption) {
-        return upload("sendDocument", "document", chatId, file, caption, Map.of());
+        return sendDocument(chatId, file, caption, null);
+    }
+
+    public TgMessage sendDocument(long chatId, Path file, String caption, InlineKeyboard keyboard) {
+        return upload("sendDocument", "document", chatId, file, caption, Map.of(), keyboard);
     }
 
     public TgMessage sendDocument(long chatId, String fileId, String caption) {
-        return sendFileId("sendDocument", "document", chatId, fileId, caption, Map.of());
+        return sendDocument(chatId, fileId, caption, null);
+    }
+
+    public TgMessage sendDocument(long chatId, String fileId, String caption, InlineKeyboard keyboard) {
+        return sendFileId("sendDocument", "document", chatId, fileId, caption, Map.of(), keyboard);
     }
 
     public List<TgMessage> sendLongMessage(long chatId, String text) {
@@ -170,7 +206,7 @@ public class TelegramApiClient {
     }
 
     private TgMessage upload(String method, String field, long chatId, Path file, String caption,
-                             Map<String, String> extras) {
+                             Map<String, String> extras, InlineKeyboard keyboard) {
         JsonNode result = withTelegramRetry(method, () -> {
             MultipartBodyBuilder multipart = new MultipartBodyBuilder();
             multipart.part("chat_id", Long.toString(chatId));
@@ -180,6 +216,13 @@ public class TelegramApiClient {
             extras.forEach((key, value) -> {
                 if (value != null && !value.isBlank()) multipart.part(key, value);
             });
+            if (keyboard != null && !keyboard.rows().isEmpty()) {
+                try {
+                    multipart.part("reply_markup", objectMapper.writeValueAsString(keyboard));
+                } catch (tools.jackson.core.JacksonException e) {
+                    throw new TelegramApiException(0, "Could not serialize the inline keyboard");
+                }
+            }
             JsonNode response = webClient.post()
                     .uri("/" + method)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -194,13 +237,14 @@ public class TelegramApiClient {
     }
 
     private TgMessage sendFileId(String method, String field, long chatId, String fileId, String caption,
-                                 Map<String, ?> extras) {
+                                 Map<String, ?> extras, InlineKeyboard keyboard) {
         var body = new java.util.LinkedHashMap<String, Object>();
         body.put("chat_id", chatId);
         body.put(field, fileId);
         body.put("caption", caption == null ? "" : caption);
         body.put("parse_mode", "HTML");
         body.putAll(extras);
+        if (keyboard != null && !keyboard.rows().isEmpty()) body.put("reply_markup", keyboard);
         return objectMapper.convertValue(postJson(method, body, Duration.ofSeconds(60)), TgMessage.class);
     }
 

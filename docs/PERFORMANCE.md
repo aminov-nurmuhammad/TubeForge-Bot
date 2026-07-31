@@ -2,15 +2,16 @@
 
 ## Fast paths
 
-1. **Instant shell:** URL parsing and one database insert make one-tap actions available without waiting for yt-dlp.
-2. **Metadata hit:** a normalized URL is copied from PostgreSQL/H2 into a new user-owned request without running yt-dlp.
-3. **Artifact hit:** Telegram receives an existing `file_id`; YouTube, local storage, FFmpeg and binary upload are skipped.
-4. **Single flight:** concurrent cache misses share one inspection or one media build.
-5. **Progressive MP4:** compatible combined video+audio is preferred before separate DASH streams where the requested quality allows it.
-6. **Zero conversion:** H.264/AAC MP4 passes one FFprobe call and is uploaded unchanged; only incompatible media invokes FFmpeg.
-7. **Ordered concurrent updates:** one chat keeps strict update order, while independent chats use separate bounded workers.
-8. **Failure cooldown:** repeated requests for the same recently rejected URL reuse the actionable failure instead of hammering the source.
-9. **Smart format fallback:** exact quality actions prefer Telegram-ready streams and keep the requested height if a source format ID expires.
+1. **Direct Reel delivery:** URL parsing and one database insert immediately queue the original video; no card, inspection or second user action is on the critical path.
+2. **Instant YouTube shell:** one database insert makes one-tap actions available without waiting for yt-dlp.
+3. **Metadata hit:** a normalized URL is copied from PostgreSQL/H2 into a new user-owned request without running yt-dlp.
+4. **Artifact hit:** Telegram receives an existing `file_id`; source download, local storage, FFmpeg and binary upload are skipped.
+5. **Single flight:** concurrent cache misses share one inspection or one media build.
+6. **Original combined MP4:** Instagram's combined MP4 is preferred before any merge.
+7. **Zero conversion:** H.264/AAC MP4 passes one FFprobe call and is uploaded unchanged; only incompatible media invokes FFmpeg.
+8. **Ordered concurrent updates:** one chat keeps strict update order, while independent chats use separate bounded workers.
+9. **Failure cooldown:** repeated requests for the same recently rejected URL reuse the actionable failure instead of hammering the source.
+10. **Smart format fallback:** exact YouTube quality actions prefer Telegram-ready streams and keep the requested height if a source format ID expires.
 
 ## Capacity model
 
@@ -30,4 +31,4 @@ These are starting points, not guarantees. Video transcoding, playlists and loss
 
 ## Horizontal scaling boundary
 
-Telegram long polling allows one active consumer per bot token. TubeForge 7 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.
+Telegram long polling allows one active consumer per bot token. TubeForge 8 is optimized as a production-grade modular monolith on one host. A future multi-node deployment should separate update ingestion from workers and add a distributed queue/lock; running several identical polling instances with the same token causes Telegram HTTP 409 and is not supported.
